@@ -11,52 +11,91 @@ import torch
 
 
 class PELayer:
-        '''
-        Later structure is
-           ==> [(v)<-->(e)] <==> [(v)<-->(e)] <==
-        '''
+    '''
+    Later structure is
+       ==> [(v)<-->(e)] <==> [(v)<-->(e)] <==
+    '''
 
-        def __init__(self, n=10):
-                self.n = n
-                # self.v = np.zeros(self.n)
-                # self.e = np.zeros(self.n)
-                # self.zv = np.zeros(self.n)
-                # self.ze = np.zeros(self.n)
-                self.v = torch.FloatTensor(self.n).zero_()
-                #self.zv = torch.FloatTensor(self.n).zero_()
-                self.e = torch.FloatTensor(self.n).zero_()
-                #self.ze = torch.FloatTensor(self.n).zero_()
-                self.type = ''
-                self.trans_fcn = 0  # 0=logistic, 1=identity
-                self.is_input = False
-                self.layer_above = []
-                self.layer_below = []
-                self.dvdt = 0.
+    def __init__(self, n=10):
+        self.n = n
+        # self.v = np.zeros(self.n)
+        # self.e = np.zeros(self.n)
+        # self.zv = np.zeros(self.n)
+        # self.ze = np.zeros(self.n)
+        self.v = torch.FloatTensor(self.n).zero_()
+        #self.zv = torch.FloatTensor(self.n).zero_()
+        self.e = torch.FloatTensor(self.n).zero_()
+        #self.ze = torch.FloatTensor(self.n).zero_()
+        self.Sigma = torch.eye(self.n)
+        self.type = ''
+        self.trans_fcn = 0  # 0=logistic, 1=identity
+        self.is_input = False
+        self.layer_above = []
+        self.layer_below = []
+        self.dvdt = torch.FloatTensor(self.n).zero_()
+        self.dedt = torch.FloatTensor(self.n).zero_()
 
-        def Set(self, v):
-            self.v = copy.deepcopy(v)
+    def Set(self, v):
+        self.v = copy.deepcopy(v)
 
-        def DisplayState(self):
-            print(self.v)
+    def DisplayState(self):
+        print(self.v)
 
-        def get_v(self):
-                return self.v
+    def DisplayError(self):
+        print(self.e)
 
-        def Softmax(self):
-            self.v.div( torch.sum(self.v) )
-            #self.v = self.v / np.sum(self.v)
-
-        def Output_Up(self):
-            return self.e
-
-        def Output_Down(self):
+    def get_v(self):
             return self.v
 
-        def IntegrateFromBelow(self, below):
-            '''
-            IntegrateFromBelow involves the input to the v nodes.
-            '''
-            dvdt += 0
+    def Softmax(self):
+        self.v.div( torch.sum(self.v) )
+        #self.v = self.v / np.sum(self.v)
+
+    def Output_Up(self):
+        return self.e
+
+    def Output_Down(self):
+        return logistic( self.v )
+
+    def IntegrateFromBelow(self, W, x):
+        '''
+        IntegrateFromBelow involves the input to the v nodes.
+        phi_dot = theta*eps_u - eps_p
+        '''
+        self.dvdt += torch.mv(W, x) - self.e
+
+    def IntegrateFromAbove(self, M, x):
+        '''
+        IntegrateFromAbove involves the input to the e (error) nodes.
+        '''
+        self.dedt += self.v - torch.mv(M, x) - torch.mv(self.Sigma, self.e)
+
+    def Step(self, dt=0.001):
+        self.v = torch.add(self.v, dt, self.dvdt)
+        self.e = torch.add(self.e, dt, self.dedt)
+        self.dvdt.zero_()
+        self.dedt.zero_()
 
 
 
+
+
+class InputPELayer(PELayer):
+
+    def Step(self, dt=0.001):
+        # No update to the state, v
+        self.e = torch.add(self.e, dt, self.dedt)
+        self.dedt.zero_()
+
+
+
+def logistic(v):
+    return torch.reciprocal( torch.add( torch.exp(-v), 1.) )
+
+
+
+
+
+
+
+#
