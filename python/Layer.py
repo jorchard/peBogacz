@@ -31,6 +31,7 @@ class PELayer:
                 self.is_input = False
                 self.layer_above = []
                 self.layer_below = []
+                self.dvdt = 0.
 
         def Set(self, v):
             self.v = copy.deepcopy(v)

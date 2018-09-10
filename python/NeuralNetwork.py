@@ -20,7 +20,7 @@ class NeuralNetwork(object):
             # from m nodes -> to n nodes
             m = self.layers[-2].n
             n = L.n
-            self.W.append( torch.randn( m, n ) ) # forward weights
+            self.W.append( torch.randn( n, m ) ) # forward weights
             self.M.append( torch.randn( m, n ) ) # backward weights
             self.layers[-1].layer_below = self.layers[-2]
             self.layers[-2].layer_above = self.layers[-1]
@@ -31,7 +31,7 @@ class NeuralNetwork(object):
             b = self.layers[i-1]
             a = self.layers[i]
             a.IntegrateFromBelow( torch.mv( self.W, b.Output_Up()) )
-            b.IntegrateFromAbove( torch.vm( self.M, a.Output_Down()) )
+            b.IntegrateFromAbove( torch.mv( self.M, a.Output_Down()) )
             print(i) #self.layer[i]
 
     def Step(self, dt=0.001):
