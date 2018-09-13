@@ -23,6 +23,7 @@ class PELayer:
         # self.zv = np.zeros(self.n)
         # self.ze = np.zeros(self.n)
         self.v = torch.FloatTensor(self.n).zero_()
+        self.b = torch.FloatTensor(self.n).zero_()
         #self.zv = torch.FloatTensor(self.n).zero_()
         self.e = torch.FloatTensor(self.n).zero_()
         #self.ze = torch.FloatTensor(self.n).zero_()
@@ -38,11 +39,15 @@ class PELayer:
     def Set(self, v):
         self.v = copy.deepcopy(v)
 
-    def DisplayState(self):
-        print(self.v)
+    def SetBias(self, b):
+        for k in range(len(self.b)):
+            self.b[k] = b
 
-    def DisplayError(self):
-        print(self.e)
+    def ShowState(self):
+        print('  v = '+str(np.array(self.v)))
+
+    def ShowError(self):
+        print('  e = '+str(np.array(self.e)))
 
     def get_v(self):
             return self.v
@@ -61,14 +66,15 @@ class PELayer:
         '''
         IntegrateFromBelow involves the input to the v nodes.
         phi_dot = theta*eps_u - eps_p
+        I've also added a bias term, self.b
         '''
-        self.dvdt += torch.mv(W, x) - self.e
+        self.dvdt += torch.mv(W, x) - self.e + self.b
 
     def IntegrateFromAbove(self, M, x):
         '''
         IntegrateFromAbove involves the input to the e (error) nodes.
         '''
-        self.dedt += self.v - torch.mv(M, x) - torch.mv(self.Sigma, self.e)
+        self.dedt += logistic(self.v) - torch.mv(M, x) - torch.mv(self.Sigma, self.e)
 
     def Step(self, dt=0.001):
         self.v = torch.add(self.v, dt, self.dvdt)
@@ -81,6 +87,13 @@ class PELayer:
 
 
 class InputPELayer(PELayer):
+
+    def __init__(self, n=10):
+        PELayer.__init__(self, n=n)
+        self.is_input = True
+
+    def SetInput(self, x):
+        self.v = torch.tensor(copy.deepcopy(x))
 
     def Step(self, dt=0.001):
         # No update to the state, v
