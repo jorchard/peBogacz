@@ -35,6 +35,9 @@ class PELayer:
         self.layer_below = []
         self.dvdt = torch.FloatTensor(self.n).zero_()
         self.dedt = torch.FloatTensor(self.n).zero_()
+        self.tau = 0.05
+        self.v_history = []
+        self.e_history = []
 
     def Set(self, v):
         self.v = copy.deepcopy(v)
@@ -77,13 +80,15 @@ class PELayer:
         self.dedt += logistic(self.v) - torch.mv(M, x) - torch.mv(self.Sigma, self.e)
 
     def Step(self, dt=0.001):
-        self.v = torch.add(self.v, dt, self.dvdt)
-        self.e = torch.add(self.e, dt, self.dedt)
+        k = dt/self.tau
+        self.v = torch.add(self.v, k, self.dvdt)
+        self.e = torch.add(self.e, k, self.dedt)
         self.dvdt.zero_()
         self.dedt.zero_()
 
-
-
+    def Record(self):
+        self.v_history.append(np.array(self.v))
+        self.e_history.append(np.array(self.e))
 
 
 class InputPELayer(PELayer):
@@ -100,7 +105,8 @@ class InputPELayer(PELayer):
         self.e = torch.add(self.e, dt, self.dedt)
         self.dedt.zero_()
 
-
+    def Record(self):
+        self.e_history.append(np.array(self.e))
 
 def logistic(v):
     return torch.reciprocal( torch.add( torch.exp(-v), 1.) )

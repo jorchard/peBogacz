@@ -13,6 +13,8 @@ class NeuralNetwork(object):
         self.M = []
         self.cross_entropy = False
         self.weight_decay = 0.
+        self.t = 0.
+        self.t_history = []
 
     def AddLayer(self, L):
         self.layers.append(L)
@@ -76,12 +78,22 @@ class NeuralNetwork(object):
     def Cost(self, target):
         return 0. #self.layer[-1].Cost(target)
 
+    def Record(self):
+        '''
+        Records the state of the network.
+        '''
+        self.t_history.append(self.t)
+        for layer in self.layers:
+            layer.Record()
+
 
     def Run(self, T, dt):
-        tt = np.arange(0, T, dt)
+        tt = np.arange(self.t, self.t+T, dt)
         for t in tt:
+            self.t = t
             self.Integrate()
             self.Step(dt=dt)
+            self.Record()
 
 
 
