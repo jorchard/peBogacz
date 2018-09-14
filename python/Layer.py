@@ -83,6 +83,7 @@ class PELayer:
         k = dt/self.tau
         self.v = torch.add(self.v, k, self.dvdt)
         self.e = torch.add(self.e, k, self.dedt)
+        # I guess there should also be an update for self.b.
         self.dvdt.zero_()
         self.dedt.zero_()
 
