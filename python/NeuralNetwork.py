@@ -3,6 +3,7 @@
 import numpy as np
 import Layer
 import torch
+from copy import deepcopy
 
 
 class NeuralNetwork(object):
@@ -17,6 +18,7 @@ class NeuralNetwork(object):
         self.weight_decay = 0.
         self.t = 0.
         self.t_history = []
+        self.learning_tau = 500000.0
 
 
     def AddLayer(self, L):
@@ -42,8 +44,14 @@ class NeuralNetwork(object):
         for idx, wm in enumerate(zip(self.W, self.M)):
             w = wm[0]
             m = wm[1]
-            nn = min(self.layers[idx].n, self.layers[idx+1].n)
-            for c in range(nn):
+            nn = self.layers[idx].n
+            mm = self.layers[idx+1].n
+            for a in range(nn):
+                for b in range(mm):
+                    w[a,b] = 0.
+                    m[b,a] = 0.
+            n_min = min(nn, mm)
+            for c in range(n_min):
                 w[c,c] = 1.
                 m[c,c] = 1.
 
@@ -56,6 +64,8 @@ class NeuralNetwork(object):
     def SetInput(self, x):
         self.layers[0].SetInput(x)
 
+    def SetExpectation(self, x):
+        self.layers[-1].SetExpectation(x)
 
     def Integrate(self):
         for i in range(1, len(self.layers)):
@@ -67,7 +77,8 @@ class NeuralNetwork(object):
             # Now the weight gradients
             # M first... I think this is the right order. We'll know once we use a 
             # different # of neurons in each layer.
-            torch.addr(self.dMdt[i-1],
+            # Based on equation (29) in "A tutorial on ..." by Bogacz.
+            self.dMdt[i-1] = torch.addr(self.dMdt[i-1],
                        self.layers[i-1].Output_Up(),
                        self.layers[i].Output_Down(), alpha=1 )
 
@@ -78,20 +89,27 @@ class NeuralNetwork(object):
 
 
     def Step(self, dt=0.001):
+        k = dt/self.learning_tau
         for i in range(0, len(self.layers)):
             self.layers[i].Step(dt=dt)
         for i in range(1, len(self.layers)):
             # Update W and M
-
+            self.M[i-1] = torch.add(self.M[i-1], k, self.dMdt[i-1])
+            self.W[i-1] = torch.transpose(self.M[i-1], 0, 1)
 
     def ShowState(self):
         for idx, layer in enumerate(self.layers):
             if layer.is_input:
                 print('Layer '+str(idx)+' (input):')
+                layer.ShowState()
+                layer.ShowError()
+            elif layer.is_top:
+                print('Layer '+str(idx)+' (expectation):')
+                layer.ShowState()
             else:
                 print('Layer '+str(idx)+':')
-            layer.ShowState()
-            layer.ShowError()
+                layer.ShowState()
+                layer.ShowError()
 
 
     def ShowWeights(self):
@@ -101,6 +119,9 @@ class NeuralNetwork(object):
             print('  M'+str(idx+1)+str(idx)+' = ')
             print(str(np.array(self.M[idx])))
 
+    def ShowBias(self):
+        for idx, layer in enumerate(self.layers):
+            layer.ShowBias()
 
     def Cost(self, target):
         return 0. #self.layer[-1].Cost(target)

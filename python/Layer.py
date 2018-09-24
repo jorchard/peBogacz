@@ -23,7 +23,8 @@ class PELayer:
         # self.zv = np.zeros(self.n)
         # self.ze = np.zeros(self.n)
         self.v = torch.FloatTensor(self.n).zero_()
-        self.b = torch.FloatTensor(self.n).zero_()
+        #self.b = torch.FloatTensor(self.n).zero_()
+        self.b = torch.tensor([0.2689]*self.n)
         #self.zv = torch.FloatTensor(self.n).zero_()
         self.e = torch.FloatTensor(self.n).zero_()
         #self.ze = torch.FloatTensor(self.n).zero_()
@@ -31,6 +32,7 @@ class PELayer:
         self.type = ''
         self.trans_fcn = 0  # 0=logistic, 1=identity
         self.is_input = False
+        self.is_top = False
         self.layer_above = []
         self.layer_below = []
         self.dvdt = torch.FloatTensor(self.n).zero_()
@@ -52,18 +54,21 @@ class PELayer:
     def ShowError(self):
         print('  e = '+str(np.array(self.e)))
 
+    def ShowBias(self):
+        print('  b = '+str(np.array(self.b)))
+
     def get_v(self):
             return self.v
 
-    def Softmax(self):
-        self.v.div( torch.sum(self.v) )
-        #self.v = self.v / np.sum(self.v)
+    # def Softmax(self):
+    #     self.v.div( torch.sum(self.v) )
+    #     #self.v = self.v / np.sum(self.v)
 
     def Output_Up(self):
         return self.e
 
     def Output_Down(self):
-        return logistic( self.v )
+        return tanh( self.v )
 
     def IntegrateFromBelow(self, W, x):
         '''
@@ -71,13 +76,13 @@ class PELayer:
         phi_dot = theta*eps_u - eps_p
         I've also added a bias term, self.b
         '''
-        self.dvdt += torch.mv(W, x) - self.e + self.b
+        self.dvdt += torch.mv(W, self.layer_below.e) * tanh_p(self.v) - self.e
 
     def IntegrateFromAbove(self, M, x):
         '''
         IntegrateFromAbove involves the input to the e (error) nodes.
         '''
-        self.dedt += logistic(self.v) - torch.mv(M, x) - torch.mv(self.Sigma, self.e)
+        self.dedt += self.v - torch.mv(M, x) - self.layer_above.b - torch.mv(self.Sigma, self.e)
 
     def Step(self, dt=0.001):
         k = dt/self.tau
@@ -97,6 +102,7 @@ class InputPELayer(PELayer):
     def __init__(self, n=10):
         PELayer.__init__(self, n=n)
         self.is_input = True
+        self.is_top = False
 
     def SetInput(self, x):
         self.v = torch.tensor(copy.deepcopy(x))
@@ -109,13 +115,42 @@ class InputPELayer(PELayer):
     def Record(self):
         self.e_history.append(np.array(self.e))
 
+
+class TopPELayer(PELayer):
+
+    def __init__(self, n=10):
+        PELayer.__init__(self, n=n)
+        self.is_top = True
+        self.is_input = False
+
+    def SetExpectation(self, x):
+        self.v = torch.tensor(copy.deepcopy(x))
+
+    def Output_Down(self):
+        return self.v
+
+    def Step(self, dt=0.01):
+        return
+
+    def Integrate(self):
+        return
+
+    def Record(self):
+        self.v_history.append(np.array(self.v))
+
+
+
 def logistic(v):
     return torch.reciprocal( torch.add( torch.exp(-v), 1.) )
 
+def logistic_p(v):
+    return torch.addcmul( torch.zeros_like(v) , v , torch.neg(torch.add(v, -1)) ) 
 
+def tanh(v):
+    return torch.tanh(v)
 
-
-
+def tanh_p(v):
+    return torch.add( torch.neg( torch.pow( torch.tanh(v),2) ) , 1.)
 
 
 #
