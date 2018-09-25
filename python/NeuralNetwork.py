@@ -18,7 +18,10 @@ class NeuralNetwork(object):
         self.weight_decay = 0.
         self.t = 0.
         self.t_history = []
-        self.learning_tau = 500000.0
+        self.learning_tau = 5.0
+        self.learn = False
+        self.learn_weights = self.learn
+        self.learn_biases = self.learn
 
 
     def AddLayer(self, L):
@@ -71,31 +74,44 @@ class NeuralNetwork(object):
         for i in range(1, len(self.layers)):
             below_i = self.layers[i-1]
             layer_i = self.layers[i]
-            layer_i.IntegrateFromBelow( self.W[i-1], below_i.Output_Up() )
-            below_i.IntegrateFromAbove( self.M[i-1], layer_i.Output_Down() )
+            W = self.W[i-1]
+            M = self.M[i-1]
+
+            #layer_i.IntegrateFromBelow( self.W[i-1], below_i.Output_Up() )
+            layer_i.dvdt = torch.mv(W,below_i.e) * Layer.tanh_p(layer_i.v) - layer_i.e
+            #below_i.IntegrateFromAbove( self.M[i-1], layer_i.Output_Down() )
+            below_i.dedt = below_i.v - torch.mv(M, Layer.tanh(layer_i.v) ) - below_i.b - torch.mv(below_i.Sigma, below_i.e)
 
             # Now the weight gradients
             # M first... I think this is the right order. We'll know once we use a 
             # different # of neurons in each layer.
             # Based on equation (29) in "A tutorial on ..." by Bogacz.
-            self.dMdt[i-1] = torch.addr(self.dMdt[i-1],
-                       self.layers[i-1].Output_Up(),
-                       self.layers[i].Output_Down(), alpha=1 )
+            # self.dMdt[i-1] = torch.addr(self.dMdt[i-1],
+            #            self.layers[i-1].Output_Up(),
+            #            self.layers[i].Output_Down(), alpha=1 )
+            self.dMdt[i-1] = torch.addr(M, below_i.e, Layer.tanh(layer_i.v), alpha=1 )
 
             # Have to do this for self.W now. Not sure what the equation should be,
             # since it should presumably be different than that for M.
 
             # And what about the bias? It's stored in the Layer data.
+            below_i.dbdt = below_i.e
 
 
     def Step(self, dt=0.001):
         k = dt/self.learning_tau
         for i in range(0, len(self.layers)):
             self.layers[i].Step(dt=dt)
-        for i in range(1, len(self.layers)):
-            # Update W and M
-            self.M[i-1] = torch.add(self.M[i-1], k, self.dMdt[i-1])
-            self.W[i-1] = torch.transpose(self.M[i-1], 0, 1)
+        if self.learn:
+            for i in range(1, len(self.layers)-1):
+                # Update W and M
+                if self.learn_weights:
+                    self.M[i-1] = torch.add(self.M[i-1], -k, self.dMdt[i-1])
+                    self.W[i-1] = torch.transpose(self.M[i-1], 0, 1)
+                    self.dMdt[i-1].zero_()
+                if self.learn_biases:
+                    self.layers[i-1].b = torch.add(self.layers[i-1].b, k, self.layers[i-1].dbdt)
+                    self.layers[i-1].dbdt.zero_()
 
     def ShowState(self):
         for idx, layer in enumerate(self.layers):
