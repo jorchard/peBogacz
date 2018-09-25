@@ -95,7 +95,8 @@ class NeuralNetwork(object):
             # since it should presumably be different than that for M.
 
             # And what about the bias? It's stored in the Layer data.
-            below_i.dbdt = below_i.e
+            below_i.dbdt = deepcopy(below_i.e)
+            #print(str(np.array(below_i.dbdt)))
 
 
     def Step(self, dt=0.001):
@@ -109,9 +110,11 @@ class NeuralNetwork(object):
                     self.M[i-1] = torch.add(self.M[i-1], -k, self.dMdt[i-1])
                     self.W[i-1] = torch.transpose(self.M[i-1], 0, 1)
                     self.dMdt[i-1].zero_()
+            for i in range(0, len(self.layers)-1):
                 if self.learn_biases:
-                    self.layers[i-1].b = torch.add(self.layers[i-1].b, k, self.layers[i-1].dbdt)
-                    self.layers[i-1].dbdt.zero_()
+                    self.layers[i].b = torch.add(self.layers[i].b, k, self.layers[i].dbdt)
+                    #print('Update to bias of layer '+str(i)+' '+str(np.array(self.layers[i].dbdt)))
+                    self.layers[i].dbdt.zero_()
 
     def ShowState(self):
         for idx, layer in enumerate(self.layers):

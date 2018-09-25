@@ -96,7 +96,7 @@ class PELayer:
             self.b = torch.add(self.b, k/50., self.dbdt)
         self.dvdt.zero_()
         self.dedt.zero_()
-        self.dbdt.zero_()
+        #self.dbdt.zero_()
 
     def Record(self):
         self.v_history.append(np.array(self.v))
