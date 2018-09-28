@@ -23,9 +23,9 @@ class PELayer:
         # self.zv = np.zeros(self.n)
         # self.ze = np.zeros(self.n)
         self.v = torch.FloatTensor(self.n).zero_()
-        #self.b = torch.FloatTensor(self.n).zero_()
+        self.b = torch.FloatTensor(self.n).zero_()
         #self.b = torch.tensor([0.2384]*self.n)
-        self.b = torch.tensor([0.2384]*self.n)
+        #self.b = torch.tensor([0.2384]*self.n)
         #self.zv = torch.FloatTensor(self.n).zero_()
         self.e = torch.FloatTensor(self.n).zero_()
         #self.ze = torch.FloatTensor(self.n).zero_()
@@ -119,6 +119,7 @@ class InputPELayer(PELayer):
         self.dedt.zero_()
 
     def Record(self):
+        self.v_history.append(np.array(self.v))
         self.e_history.append(np.array(self.e))
 
 

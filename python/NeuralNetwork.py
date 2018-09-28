@@ -18,7 +18,7 @@ class NeuralNetwork(object):
         self.weight_decay = 0.
         self.t = 0.
         self.t_history = []
-        self.learning_tau = 5.0
+        self.learning_tau = 0.1
         self.learn = False
         self.learn_weights = self.learn
         self.learn_biases = self.learn
@@ -30,17 +30,21 @@ class NeuralNetwork(object):
             # from m nodes -> to n nodes
             m = self.layers[-2].n
             n = L.n
-            if False:
-                self.W.append( torch.randn( n, m ) ) # forward weights
-                self.M.append( torch.randn( m, n ) ) # backward weights
+            if True:
+                self.W.append( torch.randn( n, m )*0.1 ) # forward weights
+                self.M.append( torch.randn( m, n )*0.1 ) # backward weights
             else:
                 self.W.append( torch.FloatTensor(n, m).zero_() )
                 self.M.append( torch.FloatTensor(m, n).zero_() )
+            #self.W = deepcopy(self.M)
             # Weight gradients
             self.dWdt.append( torch.FloatTensor(n, m).zero_() )
             self.dMdt.append( torch.FloatTensor(m, n).zero_() )
             self.layers[-1].layer_below = self.layers[-2]
             self.layers[-2].layer_above = self.layers[-1]
+            if self.layers[-1].is_top:
+                self.W[-1] = torch.eye(n)
+                self.M[-1] = torch.eye(n)
 
 
     def SetIdentityWeights(self):
@@ -89,7 +93,7 @@ class NeuralNetwork(object):
             # self.dMdt[i-1] = torch.addr(self.dMdt[i-1],
             #            self.layers[i-1].Output_Up(),
             #            self.layers[i].Output_Down(), alpha=1 )
-            self.dMdt[i-1] = torch.addr(M, below_i.e, Layer.tanh(layer_i.v), alpha=1 )
+            self.dMdt[i-1] = torch.addr(torch.zeros_like(self.M[i-1]), below_i.e, Layer.tanh(layer_i.v), alpha=1 )
 
             # Have to do this for self.W now. Not sure what the equation should be,
             # since it should presumably be different than that for M.
@@ -107,14 +111,16 @@ class NeuralNetwork(object):
             for i in range(1, len(self.layers)-1):
                 # Update W and M
                 if self.learn_weights:
-                    self.M[i-1] = torch.add(self.M[i-1], -k, self.dMdt[i-1])
+                    #self.M[i-1] = torch.add(self.M[i-1], -k, self.dMdt[i-1])
+                    self.M[i-1] += k*self.dMdt[i-1]
                     self.W[i-1] = torch.transpose(self.M[i-1], 0, 1)
                     self.dMdt[i-1].zero_()
-            for i in range(0, len(self.layers)-1):
+            for i in range(0, len(self.layers)-2):
                 if self.learn_biases:
                     self.layers[i].b = torch.add(self.layers[i].b, k, self.layers[i].dbdt)
                     #print('Update to bias of layer '+str(i)+' '+str(np.array(self.layers[i].dbdt)))
                     self.layers[i].dbdt.zero_()
+
 
     def ShowState(self):
         for idx, layer in enumerate(self.layers):
