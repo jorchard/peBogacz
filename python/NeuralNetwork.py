@@ -18,7 +18,7 @@ class NeuralNetwork(object):
         self.weight_decay = 0.
         self.t = 0.
         self.t_history = []
-        self.learning_tau = 0.1
+        self.learning_tau = 2.
         self.learn = False
         self.learn_weights = self.learn
         self.learn_biases = self.learn
@@ -101,6 +101,9 @@ class NeuralNetwork(object):
             # And what about the bias? It's stored in the Layer data.
             below_i.dbdt = deepcopy(below_i.e)
             #print(str(np.array(below_i.dbdt)))
+
+        # And process the FF input to the top layer
+        self.layers[-1].dvdt = torch.mv(W,self.layers[-2].e) * Layer.tanh_p(self.layers[-1].v)
 
 
     def Step(self, dt=0.001):
