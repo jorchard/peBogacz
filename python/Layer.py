@@ -39,7 +39,7 @@ class PELayer:
         self.dvdt = torch.FloatTensor(self.n).zero_()
         self.dedt = torch.FloatTensor(self.n).zero_()
         self.dbdt = torch.FloatTensor(self.n).zero_()
-        self.tau = 0.05
+        self.tau = 0.1
         self.v_history = []
         self.e_history = []
 
@@ -77,12 +77,19 @@ class InputPELayer(PELayer):
         PELayer.__init__(self, n=n)
         self.is_input = True
         self.is_top = False
+        self.sensory = torch.zeros(n)  # container for constant input
+        self.beta = 1.  # relative weight of FF inputs (vs FB)
 
     def SetInput(self, x):
-        self.v = torch.tensor(copy.deepcopy(x))
+        self.sensory = torch.tensor(copy.deepcopy(x))
+        #self.v = torch.tensor(copy.deepcopy(x))
 
     def Step(self, dt=0.001):
         # No update to the state, v
+        k = dt/self.tau
+        self.v = self.v + k*( self.beta*(self.sensory - self.v) +
+                              (1.-self.beta)*self.dvdt )
+        self.dvdt.zero_()
         self.e = torch.add(self.e, dt, self.dedt)
         self.dedt.zero_()
 
@@ -97,15 +104,15 @@ class TopPELayer(PELayer):
         PELayer.__init__(self, n=n)
         self.is_top = True
         self.is_input = False
-        self.expectation = torch.zeros(n)
-        self.v = torch.FloatTensor(self.n).zero_()
-        self.dvdt = torch.FloatTensor(self.n).zero_()
+        self.expectation = torch.zeros(n)  # container for constant input
+        #self.v = torch.FloatTensor(self.n).zero_()
+        #self.dvdt = torch.FloatTensor(self.n).zero_()
 
-        self.beta = 1.  # relative weight of expectation vs FF inputs
+        self.beta = 0.  # relative weight of FF inputs (vs FB)
 
     def SetExpectation(self, x):
         self.expectation = torch.tensor(copy.deepcopy(x))
-        self.v = torch.tensor(copy.deepcopy(x))
+        #self.v = torch.tensor(copy.deepcopy(x))
         self.e = torch.zeros_like(self.v)
 
     def Output_Down(self):
@@ -117,8 +124,8 @@ class TopPELayer(PELayer):
         and the input from below.
         '''
         k = dt/self.tau
-        self.v = self.v + k*( (1.-self.beta)*self.dvdt +
-                              self.beta*(self.expectation - self.v) )
+        self.v = self.v + k*( self.beta*self.dvdt +
+                              (1.-self.beta)*(self.expectation - self.v) )
         self.dvdt.zero_()
 
     def Integrate(self):
