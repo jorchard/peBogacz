@@ -5,6 +5,10 @@ import Layer
 import torch
 from copy import deepcopy
 
+def OneHot(z):
+    y = np.zeros(np.shape(z))
+    y[np.argmax(z)] = 1.
+    return y
 
 class NeuralNetwork(object):
 
@@ -42,9 +46,9 @@ class NeuralNetwork(object):
             self.dMdt.append( torch.FloatTensor(m, n).zero_() )
             self.layers[-1].layer_below = self.layers[-2]
             self.layers[-2].layer_above = self.layers[-1]
-            if self.layers[-1].is_top:
-                self.W[-1] = torch.eye(n)
-                self.M[-1] = torch.eye(n)
+            # if self.layers[-1].is_top:
+            #     self.W[-1] = torch.eye(n)
+            #     self.M[-1] = torch.eye(n)
 
 
     def SetIdentityWeights(self):
@@ -174,7 +178,35 @@ class NeuralNetwork(object):
             self.Record()
 
 
+    def Infer(self, T, x, y):
+        self.learn = True
+        self.learn_weights = True
+        self.learn_biases = True
+        self.layers[0].beta = 1.
+        self.layers[-1].beta = 0.
+        self.SetInput(x)
+        self.SetExpectation(y)
+        self.Run(T, dt=0.01)
 
+    def Predict(self, T, x):
+        self.learn = False
+        self.learn_weights = False
+        self.learn_biases = False
+        self.layers[0].beta = 1.
+        self.layers[-1].beta = 1.
+        self.SetInput(x)
+        self.Run(T, dt=0.01)
+        return self.layers[-1].v
+
+    def Generate(self, T, y):
+        self.learn = False
+        self.learn_weights = False
+        self.learn_biases = False
+        self.layers[0].beta = 0.
+        self.layers[-1].beta = 0.
+        self.SetExpectation(y)
+        self.Run(T, dt=0.01)
+        return self.layers[0].v
 
 
 

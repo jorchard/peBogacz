@@ -81,7 +81,7 @@ class InputPELayer(PELayer):
         self.beta = 1.  # relative weight of FF inputs (vs FB)
 
     def SetInput(self, x):
-        self.sensory = torch.tensor(copy.deepcopy(x))
+        self.sensory = torch.tensor(copy.deepcopy(x)).float()
         #self.v = torch.tensor(copy.deepcopy(x))
 
     def Step(self, dt=0.001):
@@ -111,7 +111,7 @@ class TopPELayer(PELayer):
         self.beta = 0.  # relative weight of FF inputs (vs FB)
 
     def SetExpectation(self, x):
-        self.expectation = torch.tensor(copy.deepcopy(x))
+        self.expectation = torch.tensor(copy.deepcopy(x)).float()
         #self.v = torch.tensor(copy.deepcopy(x))
         self.e = torch.zeros_like(self.v)
 
