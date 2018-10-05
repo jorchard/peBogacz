@@ -79,17 +79,25 @@ class NeuralNetwork(object):
         self.layers[-1].SetExpectation(x)
 
     def Integrate(self):
-        self.layers[0].dvdt = -self.layers[0].e
+        self.layers[0].dvdt = self.layers[0].beta*self.layers[0].sensory - (1.-self.layers[0].beta)*self.layers[0].e
         for i in range(1, len(self.layers)):
+            # For i, update:
+            #   layer[i-1].e
+            #   layer[i].v
             below_i = self.layers[i-1]
             layer_i = self.layers[i]
             W = self.W[i-1]
             M = self.M[i-1]
 
             #layer_i.IntegrateFromBelow( self.W[i-1], below_i.Output_Up() )
-            layer_i.dvdt = torch.mv(W,below_i.e) * Layer.tanh_p(layer_i.v) - layer_i.e
+            if i==len(self.layers)-1:
+                # Top layer -- use convex combination
+                layer_i.dvdt = layer_i.beta*torch.mv(W,below_i.e) * layer_i.sigma_p(layer_i.v) - layer_i.beta*layer_i.e
+            else:
+                # NOT the top layer
+                layer_i.dvdt = torch.mv(W,below_i.e) * layer_i.sigma_p(layer_i.v) - layer_i.e
             #below_i.IntegrateFromAbove( self.M[i-1], layer_i.Output_Down() )
-            below_i.dedt = below_i.v - torch.mv(M, Layer.tanh(layer_i.v) ) - below_i.b - torch.mv(below_i.Sigma, below_i.e)
+            below_i.dedt = below_i.v - torch.mv(M, layer_i.sigma(layer_i.v) ) - below_i.b - torch.mv(below_i.Sigma, below_i.e)
 
             # Now the weight gradients
             # M first... I think this is the right order. We'll know once we use a 
@@ -98,7 +106,7 @@ class NeuralNetwork(object):
             # self.dMdt[i-1] = torch.addr(self.dMdt[i-1],
             #            self.layers[i-1].Output_Up(),
             #            self.layers[i].Output_Down(), alpha=1 )
-            self.dMdt[i-1] = torch.addr(torch.zeros_like(self.M[i-1]), below_i.e, Layer.tanh(layer_i.v), alpha=1 )
+            self.dMdt[i-1] = torch.addr(torch.zeros_like(self.M[i-1]), below_i.e, layer_i.sigma(layer_i.v), alpha=1 )
 
             # Have to do this for self.W now. Not sure what the equation should be,
             # since it should presumably be different than that for M.
@@ -108,7 +116,8 @@ class NeuralNetwork(object):
             #print(str(np.array(below_i.dbdt)))
 
         # And process the FF input to the top layer
-        self.layers[-1].dvdt = torch.mv(W,self.layers[-2].e) * Layer.tanh_p(self.layers[-1].v)
+        #self.layers[-1].dvdt = torch.mv(W,self.layers[-2].e) * self.layers[-1].sigma_p(self.layers[-1].v)
+        self.layers[-1].dedt = self.layers[-2].v - self.layers[-1].expectation - torch.mv(self.layers[-1].Sigma, self.layers[-1].e)
 
 
     def Step(self, dt=0.001):

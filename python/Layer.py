@@ -42,6 +42,8 @@ class PELayer:
         self.tau = 0.1
         self.v_history = []
         self.e_history = []
+        self.sigma = tanh
+        self.sigma_p = tanh_p
 
     # def Set(self, v):
     #     self.v = copy.deepcopy(v)
@@ -109,14 +111,18 @@ class TopPELayer(PELayer):
         #self.dvdt = torch.FloatTensor(self.n).zero_()
 
         self.beta = 0.  # relative weight of FF inputs (vs FB)
+        # self.sigma = logistic
+        # self.sigma_p = logistic_p
+        self.sigma = tanh
+        self.sigma_p = tanh_p
 
     def SetExpectation(self, x):
         self.expectation = torch.tensor(copy.deepcopy(x)).float()
         #self.v = torch.tensor(copy.deepcopy(x))
-        self.e = torch.zeros_like(self.v)
+        #self.e = torch.zeros_like(self.v)
 
-    def Output_Down(self):
-        return self.v
+    # def Output_Down(self):
+    #     return self.v
 
     def Step(self, dt=0.01):
         '''
@@ -128,8 +134,8 @@ class TopPELayer(PELayer):
                               (1.-self.beta)*(self.expectation - self.v) )
         self.dvdt.zero_()
 
-    def Integrate(self):
-        return
+    # def Integrate(self):
+    #     return
 
     def Record(self):
         self.v_history.append(np.array(self.v))
