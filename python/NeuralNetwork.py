@@ -107,7 +107,7 @@ class NeuralNetwork(object):
             #            self.layers[i-1].Output_Up(),
             #            self.layers[i].Output_Down(), alpha=1 )
             self.dMdt[i-1] = torch.addr(torch.zeros_like(self.M[i-1]), below_i.e, layer_i.sigma(layer_i.v), alpha=1 )
-
+            self.dWdt[i-1] = torch.addr(torch.zeros_like(self.W[i-1]), layer_i.sigma(layer_i.v), below_i.e, alpha=1 )
             # Have to do this for self.W now. Not sure what the equation should be,
             # since it should presumably be different than that for M.
 
@@ -130,8 +130,11 @@ class NeuralNetwork(object):
                 if self.learn_weights:
                     #self.M[i-1] = torch.add(self.M[i-1], -k, self.dMdt[i-1])
                     self.M[i-1] += k*self.dMdt[i-1]
-                    self.W[i-1] = torch.transpose(self.M[i-1], 0, 1)
+                    #self.W[i-1] = torch.transpose(self.M[i-1], 0, 1)
+                    self.W[i-1] += k*self.dWdt[i-1]
+
                     self.dMdt[i-1].zero_()
+                    self.dWdt[i-1].zero_()
             for i in range(0, len(self.layers)-1):
                 if self.learn_biases:
                     self.layers[i].b = torch.add(self.layers[i].b, k, self.layers[i].dbdt)
