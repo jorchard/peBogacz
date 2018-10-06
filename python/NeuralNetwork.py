@@ -117,7 +117,7 @@ class NeuralNetwork(object):
 
         # And process the FF input to the top layer
         #self.layers[-1].dvdt = torch.mv(W,self.layers[-2].e) * self.layers[-1].sigma_p(self.layers[-1].v)
-        self.layers[-1].dedt = self.layers[-2].v - self.layers[-1].expectation - torch.mv(self.layers[-1].Sigma, self.layers[-1].e)
+        self.layers[-1].dedt = self.layers[-1].sigma(self.layers[-1].v) - self.layers[-1].expectation - torch.mv(self.layers[-1].Sigma, self.layers[-1].e)
 
 
     def Step(self, dt=0.001):
