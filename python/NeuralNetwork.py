@@ -98,19 +98,12 @@ class NeuralNetwork(object):
                 # NOT the top layer
                 layer_i.dvdt = torch.mv(W,below_i.e) * layer_i.sigma_p(layer_i.v) - layer_i.e
             #below_i.IntegrateFromAbove( self.M[i-1], layer_i.Output_Down() )
-            below_i.dedt = below_i.v - torch.mv(M, layer_i.sigma(layer_i.v) ) - below_i.b - torch.mv(below_i.Sigma, below_i.e)
+            below_i.dedt = below_i.sigma(below_i.v) - torch.mv(M, layer_i.sigma(layer_i.v) ) - below_i.b - torch.mv(below_i.Sigma, below_i.e)
 
             # Now the weight gradients
-            # M first... I think this is the right order. We'll know once we use a 
-            # different # of neurons in each layer.
+            # M first...
             # Based on equation (29) in "A tutorial on ..." by Bogacz.
-            # self.dMdt[i-1] = torch.addr(self.dMdt[i-1],
-            #            self.layers[i-1].Output_Up(),
-            #            self.layers[i].Output_Down(), alpha=1 )
             self.dMdt[i-1] = torch.addr(torch.zeros_like(self.M[i-1]), below_i.e, layer_i.sigma(layer_i.v), alpha=1 )
-
-            # Have to do this for self.W now. Not sure what the equation should be,
-            # since it should presumably be different than that for M.
 
             # And what about the bias? It's stored in the Layer data.
             below_i.dbdt = deepcopy(below_i.e)

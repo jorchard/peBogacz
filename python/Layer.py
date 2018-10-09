@@ -114,8 +114,8 @@ class TopPELayer(PELayer):
         #self.dvdt = torch.FloatTensor(self.n).zero_()
 
         self.beta = 0.  # relative weight of FF inputs (vs FB)
-        self.sigma = logistic
-        self.sigma_p = logistic_p
+        #self.sigma = logistic
+        #self.sigma_p = logistic_p
         # self.sigma = tanh
         # self.sigma_p = tanh_p
 
