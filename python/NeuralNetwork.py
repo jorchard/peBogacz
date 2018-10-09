@@ -79,7 +79,8 @@ class NeuralNetwork(object):
         self.layers[-1].SetExpectation(x)
 
     def Integrate(self):
-        self.layers[0].dvdt = self.layers[0].beta*self.layers[0].sensory - (1.-self.layers[0].beta)*self.layers[0].e
+        # Bottom layer, use beta to balance FF and FB operation
+        self.layers[0].dvdt = self.layers[0].beta*(self.layers[0].sensory - self.layers[0].v) - (1.-self.layers[0].beta)*self.layers[0].e
         for i in range(1, len(self.layers)):
             # For i, update:
             #   layer[i-1].e
@@ -92,7 +93,7 @@ class NeuralNetwork(object):
             #layer_i.IntegrateFromBelow( self.W[i-1], below_i.Output_Up() )
             if i==len(self.layers)-1:
                 # Top layer -- use convex combination
-                layer_i.dvdt = layer_i.beta*torch.mv(W,below_i.e) * layer_i.sigma_p(layer_i.v) - layer_i.beta*layer_i.e
+                layer_i.dvdt = layer_i.beta * torch.mv(W,below_i.e) * layer_i.sigma_p(layer_i.v) - (1.-layer_i.beta)*layer_i.e
             else:
                 # NOT the top layer
                 layer_i.dvdt = torch.mv(W,below_i.e) * layer_i.sigma_p(layer_i.v) - layer_i.e
@@ -153,6 +154,9 @@ class NeuralNetwork(object):
                 layer.ShowState()
                 layer.ShowError()
 
+    def Reset(self):
+        for l in self.layers:
+            l.Reset()
 
     def ShowWeights(self):
         for idx in range(len(self.layers)-1):
@@ -205,7 +209,7 @@ class NeuralNetwork(object):
         self.layers[-1].beta = 1.
         self.SetInput(x)
         self.Run(T, dt=0.01)
-        return self.layers[-1].v
+        return self.layers[-1].sigma(self.layers[-1].v)
 
     def Generate(self, T, y):
         self.learn = False
