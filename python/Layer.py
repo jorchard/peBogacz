@@ -39,7 +39,7 @@ class PELayer:
         self.dvdt = torch.FloatTensor(self.n).zero_()
         self.dedt = torch.FloatTensor(self.n).zero_()
         self.dbdt = torch.FloatTensor(self.n).zero_()
-        self.tau = 0.1
+        self.tau = 0.02
         self.v_history = []
         self.e_history = []
         self.sigma = tanh
@@ -60,6 +60,10 @@ class PELayer:
 
     def ShowBias(self):
         print('  b = '+str(np.array(self.b)))
+
+    def Reset(self):
+        self.v.zero_()
+        self.e.zero_()
 
     def Step(self, dt=0.001):
         k = dt/self.tau
@@ -86,14 +90,13 @@ class InputPELayer(PELayer):
         self.sensory = torch.tensor(copy.deepcopy(x)).float()
         #self.v = torch.tensor(copy.deepcopy(x))
 
-    def Step(self, dt=0.001):
-        # No update to the state, v
-        k = dt/self.tau
-        self.v = self.v + k*( self.beta*(self.sensory - self.v) +
-                              (1.-self.beta)*self.dvdt )
-        self.dvdt.zero_()
-        self.e = torch.add(self.e, dt, self.dedt)
-        self.dedt.zero_()
+    # def Step(self, dt=0.001):
+    #     # No update to the state, v
+    #     k = dt/self.tau
+    #     #self.v = self.v + k*( self.beta*(self.sensory - self.v) + (1.-self.beta)*self.dvdt )
+    #     self.dvdt.zero_()
+    #     self.e = torch.add(self.e, dt, self.dedt)
+    #     self.dedt.zero_()
 
     def Record(self):
         self.v_history.append(np.array(self.v))
@@ -111,8 +114,8 @@ class TopPELayer(PELayer):
         #self.dvdt = torch.FloatTensor(self.n).zero_()
 
         self.beta = 0.  # relative weight of FF inputs (vs FB)
-        self.sigma = logistic
-        self.sigma_p = logistic_p
+        #self.sigma = logistic
+        #self.sigma_p = logistic_p
         # self.sigma = tanh
         # self.sigma_p = tanh_p
 
@@ -124,15 +127,15 @@ class TopPELayer(PELayer):
     # def Output_Down(self):
     #     return self.v
 
-    def Step(self, dt=0.01):
-        '''
-        TopPELayer.Step updates v using a weighted sum of the expectation
-        and the input from below.
-        '''
-        k = dt/self.tau
-        self.v = self.v + k*( self.beta*self.dvdt +
-                              (1.-self.beta)*(self.expectation - self.v) )
-        self.dvdt.zero_()
+    # def Step(self, dt=0.01):
+    #     '''
+    #     TopPELayer.Step updates v using a weighted sum of the expectation
+    #     and the input from below.
+    #     '''
+    #     k = dt/self.tau
+    #     #self.v = self.v + k*( self.beta*self.dvdt + (1.-self.beta)*(self.expectation - self.v) )
+    #     self.v = self.v + k*( self.beta*self.dvdt + (1.-self.beta)*(self.expectation - self.v) )
+    #     self.dvdt.zero_()
 
     # def Integrate(self):
     #     return
@@ -146,7 +149,8 @@ def logistic(v):
     return torch.reciprocal( torch.add( torch.exp(-v), 1.) )
 
 def logistic_p(v):
-    return torch.addcmul( torch.zeros_like(v) , v , torch.neg(torch.add(v, -1)) ) 
+    lv = logistic(v)
+    return torch.addcmul( torch.zeros_like(v) , lv , torch.neg(torch.add(lv, -1)) ) 
 
 def tanh(v):
     return torch.tanh(v)
