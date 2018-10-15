@@ -234,7 +234,8 @@ def tanh(v):
     return torch.tanh(v)
 
 def tanh_p(v):
-    return torch.add( torch.neg( torch.pow( torch.tanh(v),2) ) , 1.)
+    return 1. - torch.pow(torch.tanh(v),2)
+    #return torch.add( torch.neg( torch.pow( torch.tanh(v),2) ) , 1.)
 
 def softmax(v):
     z = torch.exp(v)

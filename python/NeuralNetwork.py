@@ -76,7 +76,6 @@ class NeuralNetwork(object):
         self.learn_weights = self.learn
         self.learn_biases = self.learn
         self.batch_size = 0
-        layer_counter = 0
 
 
     def Save(self, fp):
