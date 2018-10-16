@@ -44,12 +44,12 @@ class Connection(object):
         if Wgiven:
             self.W = torch.tensor(W).float().to(device)
         else:
-            self.W = torch.randn( b.n, a.n, dtype=torch.float32, device=device)*0.1
+            self.W = torch.randn( b.n, a.n, dtype=torch.float32, device=device)*0.01
 
         if Mgiven:
             self.M = torch.tensor(M).float().to(device)
         else:
-            self.M = torch.randn( a.n, b.n, dtype=torch.float32, device=device)*0.1
+            self.M = torch.randn( a.n, b.n, dtype=torch.float32, device=device)*0.01
 
         self.dWdt = torch.zeros( b.n, a.n, dtype=torch.float32, device=device)
         self.dMdt = torch.zeros( a.n, b.n, dtype=torch.float32, device=device)
@@ -298,7 +298,7 @@ class NeuralNetwork(object):
 
     #     # And process the FF input to the top layer
     #     #self.layers[-1].dvdt = torch.mv(W,self.layers[-2].e) * self.layers[-1].sigma_p(self.layers[-1].v)
-    #     self.layers[-1].dedt = self.layers[-1].sigma(self.layers[-1].v) - self.layers[-1].expectation - self.layers[-1].e #torch.mv(self.layers[-1].Sigma, self.layers[-1].e)
+    #     self.layers[-1].dedt = self.layers[-1].sigma(self.layers[-1].v) - self.layers[-1].expectation - self.layers[-1].e
 
 
     def Step(self, dt=0.01):
@@ -425,6 +425,36 @@ class NeuralNetwork(object):
         self.SetExpectation(y)
         self.Run(T, dt=0.01)
         return self.layers[0].v
+
+
+def MakeBatches(data_in, data_out, batch_size=10):
+    '''
+    batches = MakeBatches(data_in, data_out, batch_size=10)
+    
+    Breaks up the dataset into batches of size batch_size.
+    
+    Inputs:
+      data_in    is a list of inputs
+      data_out   is a list of outputs
+      batch_size is the number of samples in each batch
+      
+    Output:
+      batches is a list containing batches, where each batch is:
+                 [in_batch, out_batch]
+    '''
+    N = len(data_in)
+    batches = []
+    for k in range(0, N, batch_size):
+        din = data_in[k:k+batch_size]
+        dout = data_out[k:k+batch_size]
+        if isinstance(din, (list, tuple)):
+            batches.append( [torch.stack(din, dim=0).float().to(device) , torch.stack(dout, dim=0).float().to(device)] )
+        else:
+            batches.append( [din.float().to(device) , dout.float().to(device)] )
+    return batches
+
+
+
 
 
 

@@ -51,7 +51,7 @@ class PELayer:
         self.alpha = torch.tensor(1.).float().to(device)  # forward weight
         self.beta = torch.tensor(1.).float().to(device)   # backward weight
 
-        self.tau = torch.tensor(0.02).float().to(device)  # Dynamic time constant
+        self.tau = torch.tensor(0.1).float().to(device)  # Dynamic time constant
         self.v_history = []
         self.e_history = []
         self.sigma = tanh  # activation function
@@ -236,6 +236,12 @@ def tanh(v):
 def tanh_p(v):
     return 1. - torch.pow(torch.tanh(v),2)
     #return torch.add( torch.neg( torch.pow( torch.tanh(v),2) ) , 1.)
+
+def identity(v):
+    return v
+
+def identity_p(v):
+    return torch.ones_like(v)
 
 def softmax(v):
     z = torch.exp(v)
