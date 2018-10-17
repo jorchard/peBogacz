@@ -9,6 +9,12 @@ import numpy as np
 import copy
 import torch
 
+dtype = torch.float
+if torch.cuda.is_available():
+    device = torch.device("cuda:0") # Uncomment this to run on GPU
+else:
+    device = torch.device("cpu")
+#device = torch.device("cpu")
 
 class PELayer:
     '''
@@ -17,36 +23,56 @@ class PELayer:
     '''
 
     def __init__(self, n=10):
-        self.n = n
-        # self.v = np.zeros(self.n)
-        # self.e = np.zeros(self.n)
-        # self.zv = np.zeros(self.n)
-        # self.ze = np.zeros(self.n)
-        self.v = torch.FloatTensor(self.n).zero_()
-        self.b = torch.FloatTensor(self.n).zero_()
-        #self.b = torch.tensor([0.2384]*self.n)
-        #self.b = torch.tensor([0.2384]*self.n)
-        #self.zv = torch.FloatTensor(self.n).zero_()
-        self.e = torch.FloatTensor(self.n).zero_()
-        #self.ze = torch.FloatTensor(self.n).zero_()
-        self.Sigma = torch.eye(self.n)
-        self.type = ''
-        self.trans_fcn = 0  # 0=logistic, 1=identity
+        self.n = n  # Number of nodes in layer
+        self.idx = []
+
+        # Node activities
+        # Allocated dynamically to accommodate different batch sizes
+        self.v = [] #torch.zeros(self.n, device=device)
+        self.e = [] #torch.zeros(self.n, device=device)
+        self.dvdt = [] #torch.FloatTensor(self.n).zero_().to(device)
+        self.dedt = [] #torch.FloatTensor(self.n).zero_().to(device)
+
+        # Node biases
+        self.b = torch.zeros(self.n, device=device)
+        self.dbdt = torch.FloatTensor(self.n).zero_().to(device)
+
+        # Error node variance for feedback
+        self.Sigma = torch.eye(self.n, dtype=torch.float32).to(device)
+
+        # Misc. parameters
+        #self.type = ''
+        #self.trans_fcn = 0  # 0=logistic, 1=identity
         self.is_input = False
         self.is_top = False
         self.layer_above = []
         self.layer_below = []
-        self.dvdt = torch.FloatTensor(self.n).zero_()
-        self.dedt = torch.FloatTensor(self.n).zero_()
-        self.dbdt = torch.FloatTensor(self.n).zero_()
-        self.tau = 0.02
+
+        self.alpha = torch.tensor(1.).float().to(device)  # forward weight
+        self.beta = torch.tensor(1.).float().to(device)   # backward weight
+
+        self.tau = torch.tensor(0.1).float().to(device)  # Dynamic time constant
         self.v_history = []
         self.e_history = []
-        self.sigma = tanh
+        self.sigma = tanh  # activation function
         self.sigma_p = tanh_p
+        self.batch_size = 0
 
-    # def Set(self, v):
-    #     self.v = copy.deepcopy(v)
+
+    def Allocate(self, batch_size=1):
+        if batch_size!=self.batch_size:
+            self.batch_size = batch_size
+            del self.v, self.e, self.dvdt, self.dedt
+            if batch_size>1:
+                self.v = torch.zeros([batch_size, self.n], device=device)
+                self.e = torch.zeros([batch_size, self.n], device=device)
+                self.dvdt = torch.zeros([batch_size, self.n], device=device)
+                self.dedt = torch.zeros([batch_size, self.n], device=device)
+            else:
+                self.v = torch.zeros([self.n], device=device)
+                self.e = torch.zeros([self.n], device=device)
+                self.dvdt = torch.zeros([self.n], device=device)
+                self.dedt = torch.zeros([self.n], device=device)
 
     def SetBias(self, b):
         for k in range(len(self.b)):
@@ -62,8 +88,18 @@ class PELayer:
         print('  b = '+str(np.array(self.b)))
 
     def Reset(self):
-        self.v.zero_()
-        self.e.zero_()
+        if isinstance(self.v, (torch.Tensor)):
+            self.v.zero_()
+        if isinstance(self.e, (torch.Tensor)):
+            self.e.zero_()
+
+    def SetFF(self):
+        self.alpha = torch.tensor(1.).float().to(device)
+        self.beta = torch.tensor(0.).float().to(device)
+
+    def SetFB(self):
+        self.alpha = torch.tensor(0.).float().to(device)
+        self.beta = torch.tensor(1.).float().to(device)
 
     def Step(self, dt=0.001):
         k = dt/self.tau
@@ -77,71 +113,112 @@ class PELayer:
         self.e_history.append(np.array(self.e))
 
 
+#***************************************************
+#
+#  InputPELayer
+#
+#***************************************************
 class InputPELayer(PELayer):
 
     def __init__(self, n=10):
         PELayer.__init__(self, n=n)
         self.is_input = True
         self.is_top = False
-        self.sensory = torch.zeros(n)  # container for constant input
-        self.beta = 1.  # relative weight of FF inputs (vs FB)
+        self.sensory = [] #torch.zeros(n).to(device)  # container for constant input
+
+    def Allocate(self, batch_size=1):
+        old_batch_size = self.batch_size
+        PELayer.Allocate(self, batch_size=batch_size)
+        if batch_size!=old_batch_size:
+            del self.sensory
+            if batch_size==1:
+                self.sensory = torch.zeros([self.n], dtype=torch.float, device=device)
+            else:
+                self.sensory = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
 
     def SetInput(self, x):
-        self.sensory = torch.tensor(copy.deepcopy(x)).float()
-        #self.v = torch.tensor(copy.deepcopy(x))
-
-    # def Step(self, dt=0.001):
-    #     # No update to the state, v
-    #     k = dt/self.tau
-    #     #self.v = self.v + k*( self.beta*(self.sensory - self.v) + (1.-self.beta)*self.dvdt )
-    #     self.dvdt.zero_()
-    #     self.e = torch.add(self.e, dt, self.dedt)
-    #     self.dedt.zero_()
+        self.sensory = torch.tensor(copy.deepcopy(x)).float().to(device)
 
     def Record(self):
         self.v_history.append(np.array(self.v))
         self.e_history.append(np.array(self.e))
 
 
+#***************************************************
+#
+#  TopPELayer
+#
+#***************************************************
 class TopPELayer(PELayer):
 
     def __init__(self, n=10):
         PELayer.__init__(self, n=n)
         self.is_top = True
         self.is_input = False
-        self.expectation = torch.zeros(n)  # container for constant input
-        #self.v = torch.FloatTensor(self.n).zero_()
-        #self.dvdt = torch.FloatTensor(self.n).zero_()
+        self.expectation = [] #torch.zeros(n).float().to(device)  # container for constant input
+        self.beta = torch.tensor(0., dtype=torch.float32).to(device)  # relative weight of FF inputs (vs FB)
+        self.sigma = softmax
+        self.sigma_p = softmax_p
 
-        self.beta = 0.  # relative weight of FF inputs (vs FB)
-        #self.sigma = logistic
-        #self.sigma_p = logistic_p
-        # self.sigma = tanh
-        # self.sigma_p = tanh_p
+    def Allocate(self, batch_size=1):
+        old_batch_size = self.batch_size
+        PELayer.Allocate(self, batch_size=batch_size)
+        if batch_size!=old_batch_size:
+            del self.expectation
+            if batch_size==1:
+                self.expectation = torch.zeros([self.n], dtype=torch.float, device=device)
+            else:
+                self.expectation = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
 
-    def SetExpectation(self, x):
-        self.expectation = torch.tensor(copy.deepcopy(x)).float()
-        #self.v = torch.tensor(copy.deepcopy(x))
-        #self.e = torch.zeros_like(self.v)
-
-    # def Output_Down(self):
-    #     return self.v
-
-    # def Step(self, dt=0.01):
-    #     '''
-    #     TopPELayer.Step updates v using a weighted sum of the expectation
-    #     and the input from below.
-    #     '''
-    #     k = dt/self.tau
-    #     #self.v = self.v + k*( self.beta*self.dvdt + (1.-self.beta)*(self.expectation - self.v) )
-    #     self.v = self.v + k*( self.beta*self.dvdt + (1.-self.beta)*(self.expectation - self.v) )
-    #     self.dvdt.zero_()
-
-    # def Integrate(self):
-    #     return
+    def SetExpectation(self, t):
+        self.expectation = torch.tensor(copy.deepcopy(t)).float().to(device)
 
     def Record(self):
         self.v_history.append(np.array(self.v))
+
+
+#***************************************************
+#
+#  TopAugPELayer
+#
+#***************************************************
+# class TopAugPELayer(PELayer):
+
+#     def __init__(self, n=10, a=30):
+#         PELayer.__init__(self, n=n)
+#         self.a = a  # This is the number of augmenting neurons
+#         self.va = []  # array of augmenting nodes
+#         self.dvadt = []  # and their derivatives
+#         self.is_topAug = True
+#         self.is_top = False
+#         self.is_input = False
+#         self.expectation = [] #torch.zeros(n).float().to(device)  # container for constant input
+#         self.beta = torch.tensor(0., dtype=torch.float32).to(device)  # relative weight of FF inputs (vs FB)
+#         # The classification nodes use sigma
+#         self.sigma = softmax
+#         self.sigma_p = softmax_p
+#         # The augmenting nodes use Aug_sigma
+#         self.Aug_sigma = tanh
+#         self.Aug_sigma_p = tanh_p
+#         self.Ma
+
+#     def Allocate(self, batch_size=1):
+#         old_batch_size = self.batch_size
+#         PELayer.Allocate(self, batch_size=batch_size)
+#         if batch_size!=old_batch_size:
+#             del self.expectation, self.va
+#             if batch_size==1:
+#                 self.expectation = torch.zeros([self.n], dtype=torch.float, device=device)
+#                 self.va = torch.zeros([self.a], dtype=torch.float, device=device)
+#             else:
+#                 self.expectation = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
+#                 self.va = torch.zeros([batch_size, self.a], dtype=torch.float, device=device)
+
+#     def SetExpectation(self, t):
+#         self.expectation = torch.tensor(copy.deepcopy(t)).float().to(device)
+
+#     def Record(self):
+#         self.v_history.append(np.array(self.v))
 
 
 
@@ -150,13 +227,35 @@ def logistic(v):
 
 def logistic_p(v):
     lv = logistic(v)
-    return torch.addcmul( torch.zeros_like(v) , lv , torch.neg(torch.add(lv, -1)) ) 
+    return lv*(1.-lv)
+    #return torch.addcmul( torch.zeros_like(v) , lv , torch.neg(torch.add(lv, -1)) ) 
 
 def tanh(v):
     return torch.tanh(v)
 
 def tanh_p(v):
-    return torch.add( torch.neg( torch.pow( torch.tanh(v),2) ) , 1.)
+    return 1. - torch.pow(torch.tanh(v),2)
+    #return torch.add( torch.neg( torch.pow( torch.tanh(v),2) ) , 1.)
+
+def identity(v):
+    return v
+
+def identity_p(v):
+    return torch.ones_like(v)
+
+def softmax(v):
+    z = torch.exp(v)
+    if len(np.shape(z))==1:
+        s = torch.sum(z)
+        return z/s
+    else:
+        s = torch.sum(z, dim=1)
+        return z/s[np.newaxis,:].transpose(1,0).repeat([1,np.shape(v)[1]])
+
+def softmax_p(v):
+    z = softmax(v)
+    return z*(1.-z)
+
 
 
 #
