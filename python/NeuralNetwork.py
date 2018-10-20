@@ -21,7 +21,7 @@ def OneHot(z):
 
 class Connection(object):
 
-    def __init__(self, b, a, W=None, M=None):
+    def __init__(self, blw, abv, W=None, M=None):
         '''
         Connection(b, a, W=None, M=None)
 
@@ -32,8 +32,8 @@ class Connection(object):
           a is the later (object) abover
           W and M can be supplied (optional)
         '''
-        self.below = b
-        self.above = a
+        self.below = blw
+        self.above = abv
 
         self.below_idx = self.below.idx
         self.above_idx = self.above.idx
@@ -44,15 +44,15 @@ class Connection(object):
         if Wgiven:
             self.W = torch.tensor(W).float().to(device)
         else:
-            self.W = torch.randn( b.n, a.n, dtype=torch.float32, device=device)*0.01
+            self.W = torch.randn( blw.n, abv.n, dtype=torch.float32, device=device)*0.01
 
         if Mgiven:
             self.M = torch.tensor(M).float().to(device)
         else:
-            self.M = torch.randn( a.n, b.n, dtype=torch.float32, device=device)*0.01
+            self.M = torch.randn( abv.n, blw.n, dtype=torch.float32, device=device)*0.01
 
-        self.dWdt = torch.zeros( b.n, a.n, dtype=torch.float32, device=device)
-        self.dMdt = torch.zeros( a.n, b.n, dtype=torch.float32, device=device)
+        self.dWdt = torch.zeros( blw.n, abv.n, dtype=torch.float32, device=device)
+        self.dMdt = torch.zeros( abv.n, blw.n, dtype=torch.float32, device=device)
 
 
 
@@ -84,8 +84,8 @@ class NeuralNetwork(object):
         np.save(fp, len(self.layers))
         for k in range(len(self.layers)-1):
             np.save(fp, self.layers[k].b)
-            np.save(fp, np.array(self.W[k]))
-            np.save(fp, np.array(self.M[k]))
+            np.save(fp, np.array(self.connections[k].W))
+            np.save(fp, np.array(self.connections[k].M))
         np.save(fp, self.layers[-1].b)
         fp.close()
 
@@ -93,28 +93,37 @@ class NeuralNetwork(object):
         if type(fp)==str:
             fp = open(fp, 'rb')
         n_layers = np.load(fp)
+
         b = np.load(fp)
         w = np.load(fp)
         m = np.load(fp)
+        
         L = Layer.InputPELayer(n=len(b))
-        self.AddLayer(L, W=w, M=m)
+        self.AddLayer(L)
         self.layers[0].b = torch.tensor(b).float().to(device)
+
         for k in range(1,n_layers-1):
             b = np.load(fp)
+            L = Layer.PELayer(n=len(b))
+            self.AddLayer(L)
+
+            #Create connection the k-1th and kth layer
+            self.Connect(k-1, k, w, m)
+            self.layers[-1].b = torch.tensor(b).float().to(device)
+
             w = np.load(fp)
             m = np.load(fp)
-            L = Layer.PELayer(n=len(b))
-            self.AddLayer(L, W=w, M=m)
-            self.layers[-1].b = torch.tensor(b).float().to(device)
+                
         b = np.load(fp).copy()
         L = Layer.TopPELayer(n=len(b))
         self.AddLayer(L)
+        self.Connect(n_layers-2, n_layers-1, w, m)
         self.layers[-1].b = torch.tensor(b).float().to(device)
         fp.close()
 
 
 
-    def Connect(self, prei, posti, W=None, M=None):
+    def Connect(self, pre_i, post_i, W=None, M=None):
         '''
         Connect(prei, posti, W=None, M=None)
 
@@ -124,8 +133,8 @@ class NeuralNetwork(object):
           prei is the index of the lower layer
           posti is the index of the upper layer
         '''
-        preL = self.layers[prei]
-        postL = self.layers[posti]
+        preL = self.layers[pre_i]
+        postL = self.layers[post_i]
         preL.layer_above = postL
         postL.layer_below = preL
         self.connections.append(Connection(preL, postL, W=W, M=M))
@@ -220,40 +229,43 @@ class NeuralNetwork(object):
         # Loop through connections
         # Then loop throug layers
 
+        #phi_i' = -e_i + h'(phi_i)*theta_i-1.dot(e_i-1)                 [Bogacz eq. (53)]
+        #e_i' = phi_i - theta_i.dot(h(phi_i+1)) - var_i.dot(e_i)        [Bogacz eq. (54)]
+
         # First, address only the connections between layers
         for c in self.connections:
-            b = c.below
-            a = c.above
+            blw = c.below
+            abv = c.above
             # e <-- v
-            b.dedt -= a.sigma(a.v)@c.M
+            blw.dedt -= abv.sigma(abv.v)@c.M #e_i' = theta_i.dot(h(phi_i+1))
             # e --> v
-            if a.is_top:
-                a.dvdt += a.alpha*(b.e@c.W)*a.sigma_p(a.v)  
+            if abv.is_top:
+                abv.dvdt += abv.alpha*(blw.e@c.W)*abv.sigma_p(abv.v) #phi_i+1' = alpha*h'(phi_i+1)*theta_i.dot(e_i)
             else:
-                a.dvdt += (b.e@c.W)*a.sigma_p(a.v)
+                abv.dvdt += (blw.e@c.W)*abv.sigma_p(abv.v) #phi_i+1' = h'(phi_i+1)*theta_i.dot(e_i)
 
             if self.batch_size==1:
-                c.dMdt += a.sigma(a.v.reshape([a.n,1])) @ b.e.reshape([1,b.n])
-                c.dWdt += b.e.reshape([b.n,1]) @ a.sigma(a.v.reshape([1,a.n]))
+                c.dMdt += abv.sigma(abv.v.reshape([abv.n,1])) @ blw.e.reshape([1,blw.n])
+                c.dWdt += blw.e.reshape([blw.n,1]) @ abv.sigma(abv.v.reshape([1,abv.n]))
             else:
-                c.dMdt += a.sigma(a.v).transpose(1,0) @ b.e
-                c.dWdt += b.e.transpose(1,0) @ a.sigma(a.v)
+                c.dMdt += abv.sigma(abv.v).transpose(1,0) @ blw.e
+                c.dWdt += blw.e.transpose(1,0) @ abv.sigma(abv.v)
 
-            b.dbdt += torch.sum(b.e, dim=0)
+            blw.dbdt += torch.sum(blw.e, dim=0)
 
 
         # Next, address the connections inside each layer
         for l in self.layers:
             #l.dedt += l.sigma(l.v) - l.b - l.e
             if l.is_input:
-                l.dvdt += l.alpha*(l.sensory - l.v) - l.beta*l.e
-                l.dedt += l.sigma(l.v) - l.e
+                l.dvdt += l.alpha*(l.sensory - l.v) - l.beta*l.e 
+                l.dedt += l.sigma(l.v) - l.e 
             elif l.is_top:
                 l.dvdt -= l.beta*l.e
                 l.dedt += l.sigma(l.v) - l.expectation - l.e
             else:
-                l.dvdt -= l.e
-                l.dedt += l.sigma(l.v) - l.e
+                l.dvdt -= l.e #phi_i' += -e_i
+                l.dedt += l.sigma(l.v) - l.e #e_i' += h(phi_i) - e_i
 
 
 
@@ -369,11 +381,11 @@ class NeuralNetwork(object):
             c.dMdt.zero_()
 
     def ShowWeights(self):
-        for idx in range(len(self.layers)-1):
+        for idx in range(0, len(self.connections)):
             print('  W'+str(idx)+str(idx+1)+' = ')
-            print(str(np.array(self.W[idx])))
+            print(str(np.array(self.connections[idx].W)))
             print('  M'+str(idx+1)+str(idx)+' = ')
-            print(str(np.array(self.M[idx])))
+            print(str(np.array(self.connections[idx].M)))
 
     def ShowBias(self):
         for idx, layer in enumerate(self.layers):
