@@ -56,6 +56,7 @@ class PELayer:
         self.beta = torch.tensor(1.).float().to(device)   # backward weight
 
         self.tau = torch.tensor(0.1).float().to(device)  # Dynamic time constant
+        self.probe_on = False
         self.v_history = []
         self.e_history = []
         self.sigma = tanh  # activation function
@@ -84,7 +85,9 @@ class PELayer:
     def Allocate(self, batch_size=1):
         if batch_size!=self.batch_size:
             self.batch_size = batch_size
-            del self.v, self.e, self.dvdt, self.dedt
+            del self.v, self.e, self.dvdt, self.dedt, self.v_history, self.e_history
+            self.v_history = []
+            self.e_history = []
             if batch_size>1:
                 self.v = torch.zeros([batch_size, self.n], device=device)
                 self.e = torch.zeros([batch_size, self.n], device=device)
@@ -113,6 +116,9 @@ class PELayer:
         print('  b = '+str(np.array(self.b)))
 
     def Reset(self):
+        del self.v_history, self.e_history
+        self.v_history = []
+        self.e_history = []
         if isinstance(self.v, (torch.Tensor)):
             self.v.zero_()
         if isinstance(self.e, (torch.Tensor)):
@@ -137,9 +143,13 @@ class PELayer:
         self.dvdt.zero_()
         self.dedt.zero_()
 
+    def Probe(self, bool):
+        self.probe_on = bool
+
     def Record(self):
-        self.v_history.append(np.array(self.v))
-        self.e_history.append(np.array(self.e))
+        if self.probe_on:
+            self.v_history.append(np.array(self.v))
+            self.e_history.append(np.array(self.e))
 
 
 #***************************************************

@@ -102,9 +102,8 @@ class NeuralNetwork(object):
 	    self.t_history = []
 	    self.learning_tau = 2.
 	    self.learn = False
-	    #self.learn_weights = self.learn
-	    #self.learn_biases = self.learn
 	    self.batch_size = 0
+	    self.probe_on = False
 
 
 	def Release(self):
@@ -196,6 +195,9 @@ class NeuralNetwork(object):
 	        proposed_batch_size = np.shape(x)[0]
 	    if proposed_batch_size!=self.batch_size:
 	        self.batch_size = proposed_batch_size
+	        del self.t_history
+	        self.t_history = []
+	        self.t = 0.
 	        #print('Allocating')
 	        for l in self.layers:
 	            l.Allocate(batch_size=proposed_batch_size)
@@ -258,17 +260,12 @@ class NeuralNetwork(object):
 	    k = dt/self.learning_tau
 	    for l in self.layers:
 	        l.Step(dt=dt)
-	        #l.dvdt.zero_()
-	        #l.dedt.zero_()
 
 	    if self.learn:
 	        for c in self.connections:
 	            c.M += k*c.dMdt
 	            c.W += k*c.dWdt
-	            #c.dMdt.zero_()
-	            #c.dWdt.zero_()
 	            c.below.b += k*c.below.dbdt
-	            #c.below.b.zero_()
 
 
 	def ShowState(self):
@@ -286,8 +283,11 @@ class NeuralNetwork(object):
 	            layer.ShowError()
 
 	def Reset(self):
-	    for l in self.layers:
-	        l.Reset()
+		del self.t_history
+		self.t_history = []
+		self.t = 0.
+		for l in self.layers:
+		    l.Reset()
 
 	def ResetGradients(self):
 	    for l in self.layers:
@@ -317,43 +317,51 @@ class NeuralNetwork(object):
 	    '''
 	    Records the state of the network.
 	    '''
-	    self.t_history.append(self.t)
-	    for layer in self.layers:
-	        layer.Record()
+	    if self.batch_size==1:
+		    self.t_history.append(self.t)
+		    for layer in self.layers:
+		        layer.Record()
 
 
 	def Run(self, T, dt):
-	    tt = np.arange(self.t, self.t+T, dt)
-	    for t in tt:
-	        self.t = t
-	        self.ResetGradients()
-	        self.Integrate()
-	        self.Step(dt=dt)
-	        #self.Record()
+		self.probe_on = False
+		for l in self.layers:
+			if l.probe_on:
+				self.probe_on = True
+
+		tt = np.arange(self.t, self.t+T, dt)
+		for t in tt:
+		    self.t = t
+		    self.ResetGradients()
+		    self.Integrate()
+		    self.Step(dt=dt)
+		    if self.probe_on:
+		    	self.Record()
 
 
-	def Infer(self, T, x, y):
+	def Infer(self, T, x, y, dt=0.01):
 	    self.learn = True
 	    self.layers[0].SetFF()
 	    self.layers[-1].SetFB()
 	    self.SetInput(x)
 	    self.SetExpectation(y)
-	    self.Run(T, dt=0.01)
 
-	def Predict(self, T, x):
+	    self.Run(T, dt=dt)
+
+	def Predict(self, T, x, dt=0.01):
 	    self.learn = False
 	    self.layers[0].SetFF()
 	    self.layers[-1].SetFF()
 	    self.SetInput(x)
-	    self.Run(T, dt=0.01)
+	    self.Run(T, dt=dt)
 	    return self.layers[-1].v #self.layers[-1].sigma(self.layers[-1].v)
 
-	def Generate(self, T, y):
+	def Generate(self, T, y, dt=0.01):
 	    self.learn = False
 	    self.layers[0].SetFB()
 	    self.layers[-1].SetFB()
 	    self.SetExpectation(y)
-	    self.Run(T, dt=0.01)
+	    self.Run(T, dt=dt)
 	    return self.layers[0].v
 
 
