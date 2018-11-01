@@ -22,7 +22,7 @@ class PELayer:
        ==> [(v)<-->(e)] <==> [(v)<-->(e)] <==
     '''
 
-    def __init__(self, n=10):
+    def __init__(self, n=0):
         self.n = n  # Number of nodes in layer
         self.idx = []
 
@@ -34,11 +34,15 @@ class PELayer:
         self.dedt = [] #torch.FloatTensor(self.n).zero_().to(device)
 
         # Node biases
-        self.b = torch.zeros(self.n, device=device)
-        self.dbdt = torch.FloatTensor(self.n).zero_().to(device)
+        if n>0:
+            self.b = torch.zeros(self.n, device=device)
+            self.dbdt = torch.FloatTensor(self.n).zero_().to(device)
+        else:
+            self.b = []
+            self.dbdt = []
 
         # Error node variance for feedback
-        self.Sigma = torch.eye(self.n, dtype=torch.float32).to(device)
+        #self.Sigma = torch.eye(self.n, dtype=torch.float32).to(device)
 
         # Misc. parameters
         #self.type = ''
@@ -58,6 +62,24 @@ class PELayer:
         self.sigma_p = tanh_p
         self.batch_size = 0
 
+    def Save(self, fp):
+        np.save(fp, self.n)
+        np.save(fp, self.is_input)
+        np.save(fp, self.is_top)
+        np.save(fp, self.alpha)
+        np.save(fp, self.beta)
+        np.save(fp, self.tau)
+        np.save(fp, self.b)
+
+    def Load(self, fp):
+        self.n = np.asscalar( np.load(fp) )
+        self.is_input = np.asscalar( np.load(fp) )
+        self.is_top = np.asscalar( np.load(fp) )
+        self.alpha = torch.tensor( np.load(fp) ).float().to(device)
+        self.beta = torch.tensor( np.load(fp) ).float().to(device)
+        self.tau = torch.tensor( np.load(fp) ).float().to(device)
+        self.b = torch.tensor( np.load(fp) ).float().to(device)
+        self.dbdt = torch.zeros_like( self.b ).float().to(device)
 
     def Allocate(self, batch_size=1):
         if batch_size!=self.batch_size:
@@ -73,6 +95,9 @@ class PELayer:
                 self.e = torch.zeros([self.n], device=device)
                 self.dvdt = torch.zeros([self.n], device=device)
                 self.dedt = torch.zeros([self.n], device=device)
+
+    def Release(self):
+        del self.v, self.e, self.dvdt, self.dedt, self.b
 
     def SetBias(self, b):
         for k in range(len(self.b)):
@@ -99,6 +124,10 @@ class PELayer:
 
     def SetFB(self):
         self.alpha = torch.tensor(0.).float().to(device)
+        self.beta = torch.tensor(1.).float().to(device)
+
+    def SetBidirectional(self):
+        self.alpha = torch.tensor(1.).float().to(device)
         self.beta = torch.tensor(1.).float().to(device)
 
     def Step(self, dt=0.001):
@@ -130,7 +159,8 @@ class InputPELayer(PELayer):
         old_batch_size = self.batch_size
         PELayer.Allocate(self, batch_size=batch_size)
         if batch_size!=old_batch_size:
-            del self.sensory
+            if old_batch_size!=0:
+                del self.sensory
             if batch_size==1:
                 self.sensory = torch.zeros([self.n], dtype=torch.float, device=device)
             else:
@@ -164,7 +194,8 @@ class TopPELayer(PELayer):
         old_batch_size = self.batch_size
         PELayer.Allocate(self, batch_size=batch_size)
         if batch_size!=old_batch_size:
-            del self.expectation
+            if old_batch_size!=0:
+                del self.expectation
             if batch_size==1:
                 self.expectation = torch.zeros([self.n], dtype=torch.float, device=device)
             else:
