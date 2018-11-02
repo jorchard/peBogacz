@@ -59,14 +59,40 @@ class PELayer:
         self.probe_on = False
         self.v_history = []
         self.e_history = []
+        self.activation_function = 'tanh'
         self.sigma = tanh  # activation function
         self.sigma_p = tanh_p
         self.batch_size = 0
+
+    def SetActivationFunction(self, fcn):
+        if fcn=='tanh':
+            self.activation_function = 'tanh'
+            self.sigma = tanh
+            self.sigma_p = tanh_p
+        elif fcn=='logistic':
+            self.activation_function = 'logistic'
+            self.sigma = logistic
+            self.sigma_p = logistic_p
+        elif fcn=='identity':
+            self.activation_function = 'identity'
+            self.sigma = identity
+            self.sigma_p = identity_p
+        elif fcn=='softmax':
+            self.activation_function = 'softmax'
+            self.sigma = softmax
+            self.sigma_p = softmax_p
+        else:
+            print('Activation function not recognized, using logistic')
+            self.activation_function = 'logistic'
+            self.sigma = logistic
+            self.sigma_p = logistic_p
+
 
     def Save(self, fp):
         np.save(fp, self.n)
         np.save(fp, self.is_input)
         np.save(fp, self.is_top)
+        np.save(fp, self.activation_function)
         np.save(fp, self.alpha)
         np.save(fp, self.beta)
         np.save(fp, self.tau)
@@ -76,6 +102,8 @@ class PELayer:
         self.n = np.asscalar( np.load(fp) )
         self.is_input = np.asscalar( np.load(fp) )
         self.is_top = np.asscalar( np.load(fp) )
+        self.activation_function = str( np.load(fp) )
+        self.SetActivationFunction(self.activation_function)
         self.alpha = torch.tensor( np.load(fp) ).float().to(device)
         self.beta = torch.tensor( np.load(fp) ).float().to(device)
         self.tau = torch.tensor( np.load(fp) ).float().to(device)

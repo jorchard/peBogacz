@@ -65,6 +65,13 @@ class Connection(object):
 	    	self.dWdt = []
 	    	self.dMdt = []
 
+	def MakeIdentity(self):
+		if self.below.n!=self.above.n:
+			print('Connection matrix is not square.')
+		else:
+			self.W = torch.eye(self.below.n)
+			self.M = torch.eye(self.below.n)
+
 	def Release(self):
 	    self.below = []
 	    self.above = []
@@ -102,6 +109,8 @@ class NeuralNetwork(object):
 	    self.t_history = []
 	    self.learning_tau = 2.
 	    self.learn = False
+	    self.learn_weights = True
+	    self.learn_biases = True
 	    self.batch_size = 0
 	    self.probe_on = False
 
@@ -263,9 +272,11 @@ class NeuralNetwork(object):
 
 	    if self.learn:
 	        for c in self.connections:
-	            c.M += k*c.dMdt
-	            c.W += k*c.dWdt
-	            c.below.b += k*c.below.dbdt
+	        	if self.learn_weights:
+		            c.M += k*c.dMdt
+		            c.W += k*c.dWdt
+		        if self.learn_biases:
+		            c.below.b += k*c.below.dbdt
 
 
 	def ShowState(self):
