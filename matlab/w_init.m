@@ -17,7 +17,7 @@ neurons=params.neurons;
 
 for i = 1:n_layers-1
     norm_b = 0;
-    switch type
+    switch type{i}
         case 'lin'
             norm_w = sqrt(1/(neurons(i+1) + neurons(i))) ;
         case 'tanh'

@@ -12,7 +12,7 @@ var = params.var;
 v_out = var(end);
 a = n_layers-1;
 
-iterations = length(in);
+iterations = size(in,2);
 for its = 1:iterations
     x = cell(n_layers,1);
     grad_b = cell(size(b));
@@ -23,7 +23,7 @@ for its = 1:iterations
     x_out = out(:,its);
     %make a prediciton 
     for ii = 2:n_layers
-        x{ii} = w{ii-1} * ( f( x{ii-1} , type) ) +  b{ii-1} ;
+        x{ii} = w{ii-1} * ( f( x{ii-1} , type{ii-1}) ) +  b{ii-1} ;
     end
     %infer
     x{n_layers}  = x_out;
@@ -31,12 +31,14 @@ for its = 1:iterations
     %calculate gradients
     for ii = 1:a
         grad_b{ii} = v_out * e{ii+1};
-        grad_w{ii} = v_out * e{ii+1} * f( x{ii}, type )' - d_rate*w{ii};
+        grad_w{ii} = v_out * e{ii+1} * f( x{ii}, type{ii} )' - d_rate*w{ii};
     end
-    %update weights
-    for ii = 1:a        
-        w{ii} = w{ii} + l_rate * grad_w{ii}   ;
-        b{ii} = b{ii} + l_rate * grad_b{ii}   ;
+    if 1
+        %update weights
+        for ii = 1:a        
+            w{ii} = w{ii} + l_rate * grad_w{ii}   ;
+            b{ii} = b{ii} + l_rate * grad_b{ii}   ;
+        end
     end
 end
 end

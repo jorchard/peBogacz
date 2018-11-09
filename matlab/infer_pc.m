@@ -13,9 +13,11 @@ f_n = cell(n_layers,1);
 f_p = cell(n_layers,1);
 var = params.var;
 
+%e_history = zeros(it_max, length(b{1}));
+
 %calculate initial errors
 for ii=2:n_layers
-    [f_n{ii-1},f_p{ii-1}] = f_b( x{ii-1}, type) ;
+    [f_n{ii-1},f_p{ii-1}] = f_b( x{ii-1}, type{ii-1}) ;
     e{ii} = (x{ii} - w{ii-1} * ( f_n{ii-1} ) - b{ii-1})/var(ii) ;
 end
 
@@ -27,9 +29,10 @@ for i = 1:it_max
     end
     %calculate errors
     for ii=2:n_layers
-        [f_n{ii-1},f_p{ii-1}] = f_b( x{ii-1}, type) ;
+        [f_n{ii-1},f_p{ii-1}] = f_b( x{ii-1}, type{ii-1}) ;
         e{ii} = (x{ii} - w{ii-1} * ( f_n{ii-1} ) - b{ii-1})/var(ii) ;
-    end     
+    end
+    %e_history(i,:) = e{2}';
 end
 its=i;
 end

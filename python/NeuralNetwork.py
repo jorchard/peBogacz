@@ -106,6 +106,8 @@ class NeuralNetwork(object):
 	    self.cross_entropy = False
 	    self.weight_decay = 0.
 	    self.t = 0.
+	    self.t_runstart = 0.
+	    self.learning_blackout = 1.0 # how many seconds to wait before turning learning on
 	    self.t_history = []
 	    self.learning_tau = 2.
 	    self.learn = False
@@ -207,7 +209,7 @@ class NeuralNetwork(object):
 	        del self.t_history
 	        self.t_history = []
 	        self.t = 0.
-	        #print('Allocating')
+	        print('Allocating')
 	        for l in self.layers:
 	            l.Allocate(batch_size=proposed_batch_size)
 
@@ -231,7 +233,7 @@ class NeuralNetwork(object):
 	        b = c.below
 	        a = c.above
 	        # e <-- v
-	        b.dedt -= a.sigma(a.v)@c.M
+	        b.dedt -= a.sigma(a.v)@c.M + b.b
 	        # e --> v
 	        if a.is_top:
 	            a.dvdt += a.alpha*(b.e@c.W)*a.sigma_p(a.v)  
@@ -270,7 +272,9 @@ class NeuralNetwork(object):
 	    for l in self.layers:
 	        l.Step(dt=dt)
 
-	    if self.learn:
+	    # Only update weights if learning is one, and we are past
+	    # the "blackout" transient period.
+	    if self.learn and self.t-self.t_runstart>=self.learning_blackout:
 	        for c in self.connections:
 	        	if self.learn_weights:
 		            c.M += k*c.dMdt
@@ -333,6 +337,17 @@ class NeuralNetwork(object):
 		    for layer in self.layers:
 		        layer.Record()
 
+	def BackprojectExpectation(self, y):
+		'''
+		Initialize state nodes from the top-layer expection, skipping the
+		error nodes.
+		'''
+		self.Allocate(y)
+		self.layers[-1].v = torch.tensor(y).float().to(device)
+		for idx in range(self.n_layers-2,-1,-1):
+			v = self.layers[idx+1].sigma(self.layers[idx+1].v)@self.connections[idx].M + self.layers[idx].b
+			self.layers[idx].v = torch.tensor(v).float().to(device)
+
 
 	def Run(self, T, dt):
 		self.probe_on = False
@@ -340,6 +355,7 @@ class NeuralNetwork(object):
 			if l.probe_on:
 				self.probe_on = True
 
+		self.t_runstart = self.t
 		tt = np.arange(self.t, self.t+T, dt)
 		for t in tt:
 		    self.t = t
@@ -350,8 +366,8 @@ class NeuralNetwork(object):
 		    	self.Record()
 
 
-	def Infer(self, T, x, y, dt=0.01):
-	    self.learn = True
+	def Infer(self, T, x, y, dt=0.01, learning=False):
+	    self.learn = learning
 	    self.layers[0].SetFF()
 	    self.layers[-1].SetFB()
 	    self.SetInput(x)
