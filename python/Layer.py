@@ -52,10 +52,12 @@ class PELayer:
         self.layer_above = []
         self.layer_below = []
 
-        self.alpha = torch.tensor(1.).float().to(device)  # forward weight
-        self.beta = torch.tensor(1.).float().to(device)   # backward weight
+        # self.alpha = torch.tensor(1.).float().to(device)  # forward weight
+        # self.beta = torch.tensor(1.).float().to(device)   # backward weight
+        self.alpha = 1.
+        self.beta = 1.
 
-        self.tau = torch.tensor(0.1).float().to(device)  # Dynamic time constant
+        self.tau = 0.1 #torch.tensor(0.1).float().to(device)  # Dynamic time constant
         self.probe_on = False
         self.v_history = []
         self.e_history = []
@@ -153,18 +155,18 @@ class PELayer:
             self.e.zero_()
 
     def SetFF(self):
-        self.alpha = torch.tensor(1.).float().to(device)
-        self.beta = torch.tensor(0.).float().to(device)
+        self.alpha = 1. #torch.tensor(1.).float().to(device)
+        self.beta =  0. #torch.tensor(0.).float().to(device)
 
     def SetFB(self):
-        self.alpha = torch.tensor(0.).float().to(device)
-        self.beta = torch.tensor(1.).float().to(device)
+        self.alpha = 0. #torch.tensor(0.).float().to(device)
+        self.beta =  1. #torch.tensor(1.).float().to(device)
 
     def SetBidirectional(self):
-        self.alpha = torch.tensor(1.).float().to(device)
-        self.beta = torch.tensor(1.).float().to(device)
+        self.alpha = 1. #torch.tensor(1.).float().to(device)
+        self.beta =  1. #torch.tensor(1.).float().to(device)
 
-    def Step(self, dt=0.001):
+    def Step(self, dt=0.01):
         k = dt/self.tau
         self.v = torch.add(self.v, k, self.dvdt)
         self.e = torch.add(self.e, k, self.dedt)
@@ -191,21 +193,20 @@ class InputPELayer(PELayer):
         PELayer.__init__(self, n=n)
         self.is_input = True
         self.is_top = False
-        self.sensory = [] #torch.zeros(n).to(device)  # container for constant input
+        #self.sensory = [] #torch.zeros(n).to(device)  # container for constant input
 
     def Allocate(self, batch_size=1):
         old_batch_size = self.batch_size
         PELayer.Allocate(self, batch_size=batch_size)
-        if batch_size!=old_batch_size:
-            if old_batch_size!=0:
-                del self.sensory
-            if batch_size==1:
-                self.sensory = torch.zeros([self.n], dtype=torch.float, device=device)
-            else:
-                self.sensory = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
 
     def SetInput(self, x):
-        self.sensory = torch.tensor(copy.deepcopy(x)).float().to(device)
+        #self.sensory = torch.tensor(copy.deepcopy(x)).float().to(device)
+        self.v = torch.tensor(copy.deepcopy(x)).float().to(device)
+
+    def Step(self, dt=0.01):
+        k = dt/self.tau
+        self.e = torch.add(self.e, k, self.dedt)
+        self.dedt.zero_()
 
     def Record(self):
         self.v_history.append(np.array(self.v))

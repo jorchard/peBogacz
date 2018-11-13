@@ -46,12 +46,12 @@ class Connection(object):
 	        if Wgiven:
 	            self.W = torch.tensor(W).float().to(device)
 	        else:
-	            self.W = torch.randn( b.n, a.n, dtype=torch.float32, device=device)*0.01
+	            self.W = torch.randn( b.n, a.n, dtype=torch.float32, device=device) / np.sqrt(b.n)
 
 	        if Mgiven:
 	            self.M = torch.tensor(M).float().to(device)
 	        else:
-	            self.M = torch.randn( a.n, b.n, dtype=torch.float32, device=device)*0.01
+	            self.M = torch.randn( a.n, b.n, dtype=torch.float32, device=device) / np.sqrt(b.n)
 
 	        self.dWdt = torch.zeros( b.n, a.n, dtype=torch.float32, device=device)
 	        self.dMdt = torch.zeros( a.n, b.n, dtype=torch.float32, device=device)
@@ -64,13 +64,18 @@ class Connection(object):
 	    	self.M = []
 	    	self.dWdt = []
 	    	self.dMdt = []
+	    self.learn = True
 
 	def MakeIdentity(self):
 		if self.below.n!=self.above.n:
 			print('Connection matrix is not square.')
 		else:
-			self.W = torch.eye(self.below.n)
-			self.M = torch.eye(self.below.n)
+			self.W = torch.eye(self.below.n).float().to(device)
+			self.M = torch.eye(self.below.n).float().to(device)
+
+	def Nonlearning(self):
+		self.learn = False
+		del self.dWdt, self.dMdt
 
 	def Release(self):
 	    self.below = []
@@ -89,6 +94,7 @@ class Connection(object):
 		np.save(fp, self.above_idx)
 		np.save(fp, self.W)
 		np.save(fp, self.M)
+		np.save(fp, self.learn)
 
 
 
@@ -159,7 +165,9 @@ class NeuralNetwork(object):
 			ai = np.asscalar( np.load(fp) ) # above_idx
 			W = np.load(fp)
 			M = np.load(fp)
+			learn = np.asscalar( np.load(fp) )
 			self.Connect(bi, ai, W=W, M=M)
+			self.connections[-1].learn = learn
 		fp.close()
 
 
@@ -225,46 +233,49 @@ class NeuralNetwork(object):
 
 
 	def Integrate(self):
-	    # Loop through connections
-	    # Then loop throug layers
+		# Loop through connections
+		# Then loop throug layers
 
-	    # First, address only the connections between layers
-	    for c in self.connections:
-	        b = c.below
-	        a = c.above
-	        # e <-- v
-	        b.dedt -= a.sigma(a.v)@c.M + b.b
-	        # e --> v
-	        if a.is_top:
-	            a.dvdt += a.alpha*(b.e@c.W)*a.sigma_p(a.v)  
-	        else:
-	            a.dvdt += (b.e@c.W)*a.sigma_p(a.v)
+		# First, address only the connections between layers
+		for c in self.connections:
+		    blw = c.below
+		    abv = c.above
+		    # e <-- v
+		    blw.dedt -= abv.sigma(abv.v)@c.M + blw.b
+		    # e --> v
+		    abv.dvdt += abv.alpha*(blw.e@c.W)*abv.sigma_p(abv.v)
+		    # if a.is_top:
+		    #     a.dvdt += a.alpha*(b.e@c.W)*a.sigma_p(a.v)
+		    # else:
+		    #     a.dvdt += (b.e@c.W)*a.sigma_p(a.v)
 
-	        if self.batch_size==1:
-	            c.dMdt += a.sigma(a.v.reshape([a.n,1])) @ b.e.reshape([1,b.n])
-	            c.dWdt += b.e.reshape([b.n,1]) @ a.sigma(a.v.reshape([1,a.n]))
-	        else:
-	            c.dMdt += a.sigma(a.v).transpose(1,0) @ b.e
-	            c.dWdt += b.e.transpose(1,0) @ a.sigma(a.v)
+		    if c.learn==True:
+		        if self.batch_size==1:
+		            c.dMdt += abv.sigma(abv.v.reshape([abv.n,1])) @ blw.e.reshape([1,blw.n])
+		            c.dWdt += blw.e.reshape([blw.n,1]) @ abv.sigma(abv.v.reshape([1,abv.n]))
+		        else:
+		            c.dMdt += abv.sigma(abv.v).transpose(1,0) @ blw.e
+		            c.dWdt += blw.e.transpose(1,0) @ abv.sigma(abv.v)
 
-	        b.dbdt += torch.sum(b.e, dim=0)
+		        blw.dbdt += torch.sum(blw.e, dim=0)
 
 
-	    # Next, address the connections inside each layer
-	    for l in self.layers:
-	        #l.dedt += l.sigma(l.v) - l.b - l.e
-	        if l.is_input:
-	            l.dvdt += l.alpha*(l.sensory - l.v) - l.beta*l.e
-	            #l.dedt += l.sigma(l.v) - l.e
-	            l.dedt += l.v - l.e
-	        elif l.is_top:
-	            l.dvdt -= l.beta*l.e
-	            #l.dedt += l.sigma(l.v) - l.expectation - l.e
-	            l.dedt += l.v - l.expectation - l.e
-	        else:
-	            l.dvdt -= l.e
-	            #l.dedt += l.sigma(l.v) - l.e
-	            l.dedt += l.v - l.e
+		# Next, address the connections inside each layer
+		for l in self.layers:
+		    #l.dedt += l.sigma(l.v) - l.b - l.e
+		    if l.is_input:
+		    	# The state node is not updated in a bottom input layer
+		        #l.dvdt += l.alpha*(l.sensory - l.v) - l.beta*l.e
+		        #l.dedt += l.sigma(l.v) - l.e
+		        l.dedt += l.v - l.e
+		    elif l.is_top:
+		        l.dvdt -= l.beta*l.e
+		        #l.dedt += l.sigma(l.v) - l.expectation - l.e
+		        l.dedt += l.v - l.expectation - l.e
+		    else:
+		        l.dvdt -= l.beta*l.e
+		        #l.dedt += l.sigma(l.v) - l.e
+		        l.dedt += l.v - l.e
 
 
 	def Step(self, dt=0.01):
@@ -275,7 +286,7 @@ class NeuralNetwork(object):
 	    # Only update weights if learning is one, and we are past
 	    # the "blackout" transient period.
 	    if self.learn and self.t-self.t_runstart>=self.learning_blackout:
-	        for c in self.connections:
+	        for c in self.connections: # The first connection is fixed
 	        	if self.learn_weights:
 		            c.M += k*c.dMdt
 		            c.W += k*c.dWdt
@@ -310,8 +321,9 @@ class NeuralNetwork(object):
 	        l.dedt.zero_()
 	        l.dbdt.zero_()
 	    for c in self.connections:
-	        c.dWdt.zero_()
-	        c.dMdt.zero_()
+	    	if c.learn:
+		        c.dWdt.zero_()
+		        c.dMdt.zero_()
 
 	def ShowWeights(self):
 	    for idx in range(len(self.layers)-1):
@@ -344,7 +356,7 @@ class NeuralNetwork(object):
 		'''
 		self.Allocate(y)
 		self.layers[-1].v = torch.tensor(y).float().to(device)
-		for idx in range(self.n_layers-2,-1,-1):
+		for idx in range(self.n_layers-2,0,-1):
 			v = self.layers[idx+1].sigma(self.layers[idx+1].v)@self.connections[idx].M + self.layers[idx].b
 			self.layers[idx].v = torch.tensor(v).float().to(device)
 
@@ -368,8 +380,8 @@ class NeuralNetwork(object):
 
 	def Infer(self, T, x, y, dt=0.01, learning=False):
 	    self.learn = learning
-	    self.layers[0].SetFF()
-	    self.layers[-1].SetFB()
+	    self.layers[1].SetFF()
+	    self.layers[-1].SetBidirectional()
 	    self.SetInput(x)
 	    self.SetExpectation(y)
 
@@ -377,7 +389,7 @@ class NeuralNetwork(object):
 
 	def Predict(self, T, x, dt=0.01):
 	    self.learn = False
-	    self.layers[0].SetFF()
+	    self.layers[1].SetFF()
 	    self.layers[-1].SetFF()
 	    self.SetInput(x)
 	    self.Run(T, dt=dt)
@@ -385,11 +397,12 @@ class NeuralNetwork(object):
 
 	def Generate(self, T, y, dt=0.01):
 	    self.learn = False
-	    self.layers[0].SetFB()
-	    self.layers[-1].SetFB()
+	    self.layers[1].SetFB()
+	    self.layers[-1].SetBidirectional()
 	    self.SetExpectation(y)
 	    self.Run(T, dt=dt)
-	    return self.layers[0].v
+	    mu0 = self.layers[1].sigma(self.layers[1].v) @ self.connections[0].M + self.layers[0].b
+	    return mu0
 
 
 #============================================================
