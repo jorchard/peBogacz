@@ -166,6 +166,10 @@ class PELayer:
         self.alpha = 1. #torch.tensor(1.).float().to(device)
         self.beta =  1. #torch.tensor(1.).float().to(device)
 
+    def SetFixed(self):
+        self.alpha = 0. #torch.tensor(1.).float().to(device)
+        self.beta =  0. #torch.tensor(1.).float().to(device)
+
     def Step(self, dt=0.01):
         k = dt/self.tau
         self.v = torch.add(self.v, k, self.dvdt)

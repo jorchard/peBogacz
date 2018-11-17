@@ -4,6 +4,9 @@ import numpy as np
 import Layer
 import torch
 from copy import deepcopy
+from IPython.display import display
+from ipywidgets import FloatProgress
+
 
 dtype = torch.float
 if torch.cuda.is_available():
@@ -288,10 +291,10 @@ class NeuralNetwork(object):
 	    if self.learn and self.t-self.t_runstart>=self.learning_blackout:
 	        for c in self.connections: # The first connection is fixed
 	        	if self.learn_weights:
-		            c.M += k*c.dMdt
-		            c.W += k*c.dWdt
+		            c.M += k*c.dMdt / self.batch_size
+		            c.W += k*c.dWdt / self.batch_size
 		        if self.learn_biases:
-		            c.below.b += k*c.below.dbdt
+		            c.below.b += k*c.below.dbdt / self.batch_size
 
 
 	def ShowState(self):
@@ -314,6 +317,10 @@ class NeuralNetwork(object):
 		self.t = 0.
 		for l in self.layers:
 		    l.Reset()
+
+	def ResetErrors(self):
+		for l in self.layers:
+			l.e.zero_()
 
 	def ResetGradients(self):
 	    for l in self.layers:
@@ -351,14 +358,23 @@ class NeuralNetwork(object):
 
 	def BackprojectExpectation(self, y):
 		'''
-		Initialize state nodes from the top-layer expection, skipping the
-		error nodes.
+		Initialize state nodes from the top-layer expection.
+		Then update the error nodes using the backprop forumula.
 		'''
 		self.Allocate(y)
+		# State nodes
 		self.layers[-1].v = torch.tensor(y).float().to(device)
 		for idx in range(self.n_layers-2,0,-1):
 			v = self.layers[idx+1].sigma(self.layers[idx+1].v)@self.connections[idx].M + self.layers[idx].b
 			self.layers[idx].v = torch.tensor(v).float().to(device)
+
+	def PropagateErrors(self, x):
+		# Error nodes
+		self.SetInput(x)
+		mu0 = self.layers[1].sigma(self.layers[1].v)@self.connections[0].M + self.layers[0].b
+		self.layers[0].e = self.layers[0].v - mu0
+		for idx in range(1, self.n_layers):
+			self.layers[idx].e = ( self.layers[idx-1].e @ self.connections[idx-1].W ) * self.layers[idx].sigma_p(self.layers[idx].v)
 
 
 	def Run(self, T, dt):
@@ -378,9 +394,23 @@ class NeuralNetwork(object):
 		    	self.Record()
 
 
+	def Learn(self, x, t, T=2., epochs=5, dt=0.01, batch_size=10, shuffle=True):
+		#net.learning_tau = 30. #torch.tensor(batch_size).float().to(device) * 10.
+		fp = FloatProgress(min=0,max=epochs*len(x))  
+		display(fp)
+		for k in range(epochs):
+		    batches = MakeBatches(x, t, batch_size=batch_size, shuffle=shuffle)
+		    for samp in batches:
+		        #net.Reset()
+		        self.BackprojectExpectation(samp[1])
+		        self.PropagateErrors(samp[0])
+		        self.Infer(T, samp[0], samp[1], dt=dt, learning=True)
+		        fp.value += batch_size
+
+
 	def Infer(self, T, x, y, dt=0.01, learning=False):
 	    self.learn = learning
-	    self.layers[1].SetFF()
+	    self.layers[1].SetBidirectional()
 	    self.layers[-1].SetBidirectional()
 	    self.SetInput(x)
 	    self.SetExpectation(y)
@@ -389,7 +419,7 @@ class NeuralNetwork(object):
 
 	def Predict(self, T, x, dt=0.01):
 	    self.learn = False
-	    self.layers[1].SetFF()
+	    #self.layers[1].SetFF()
 	    self.layers[-1].SetFF()
 	    self.SetInput(x)
 	    self.Run(T, dt=dt)
@@ -410,7 +440,7 @@ class NeuralNetwork(object):
 # Untility functions
 #
 #============================================================
-def MakeBatches(data_in, data_out, batch_size=10):
+def MakeBatches(data_in, data_out, batch_size=10, shuffle=True):
     '''
     batches = MakeBatches(data_in, data_out, batch_size=10)
     
@@ -420,20 +450,28 @@ def MakeBatches(data_in, data_out, batch_size=10):
       data_in    is a list of inputs
       data_out   is a list of outputs
       batch_size is the number of samples in each batch
+      shuffle    shuffle samples first (True)
       
     Output:
       batches is a list containing batches, where each batch is:
                  [in_batch, out_batch]
+                 Incomplete batches are excluded (not returned)
     '''
     N = len(data_in)
+    r = range(N)
+    if shuffle:
+    	r = torch.randperm(N)
     batches = []
     for k in range(0, N, batch_size):
-        din = data_in[k:k+batch_size]
-        dout = data_out[k:k+batch_size]
-        if isinstance(din, (list, tuple)):
-            batches.append( [torch.stack(din, dim=0).float().to(device) , torch.stack(dout, dim=0).float().to(device)] )
-        else:
-            batches.append( [din.float().to(device) , dout.float().to(device)] )
+    	if k+batch_size<=N:
+	        #din = data_in[k:k+batch_size]
+	        #dout = data_out[k:k+batch_size]
+	        din = data_in[r[k:k+batch_size]]
+	        dout = data_out[r[k:k+batch_size]]
+	        if isinstance(din, (list, tuple)):
+	            batches.append( [torch.stack(din, dim=0).float().to(device) , torch.stack(dout, dim=0).float().to(device)] )
+	        else:
+	            batches.append( [din.float().to(device) , dout.float().to(device)] )
     return batches
 
 def OneHot(z):
