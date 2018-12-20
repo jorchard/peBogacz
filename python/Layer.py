@@ -42,7 +42,7 @@ class PELayer:
             self.dbdt = []
 
         # Error node variance for feedback
-        #self.Sigma = torch.eye(self.n, dtype=torch.float32).to(device)
+        self.Sigma = 1. #torch.eye(self.n, dtype=torch.float32).to(device)
 
         # Misc. parameters
         #self.type = ''
@@ -61,40 +61,14 @@ class PELayer:
         self.probe_on = False
         self.v_history = []
         self.e_history = []
-        self.activation_function = 'tanh'
-        self.sigma = tanh  # activation function
-        self.sigma_p = tanh_p
         self.batch_size = 0
-
-    def SetActivationFunction(self, fcn):
-        if fcn=='tanh':
-            self.activation_function = 'tanh'
-            self.sigma = tanh
-            self.sigma_p = tanh_p
-        elif fcn=='logistic':
-            self.activation_function = 'logistic'
-            self.sigma = logistic
-            self.sigma_p = logistic_p
-        elif fcn=='identity':
-            self.activation_function = 'identity'
-            self.sigma = identity
-            self.sigma_p = identity_p
-        elif fcn=='softmax':
-            self.activation_function = 'softmax'
-            self.sigma = softmax
-            self.sigma_p = softmax_p
-        else:
-            print('Activation function not recognized, using logistic')
-            self.activation_function = 'logistic'
-            self.sigma = logistic
-            self.sigma_p = logistic_p
 
 
     def Save(self, fp):
         np.save(fp, self.n)
         np.save(fp, self.is_input)
         np.save(fp, self.is_top)
-        np.save(fp, self.activation_function)
+        #np.save(fp, self.activation_function)
         np.save(fp, self.alpha)
         np.save(fp, self.beta)
         np.save(fp, self.tau)
@@ -104,8 +78,8 @@ class PELayer:
         self.n = np.asscalar( np.load(fp) )
         self.is_input = np.asscalar( np.load(fp) )
         self.is_top = np.asscalar( np.load(fp) )
-        self.activation_function = str( np.load(fp) )
-        self.SetActivationFunction(self.activation_function)
+        # self.activation_function = str( np.load(fp) )
+        # self.SetActivationFunction(self.activation_function)
         self.alpha = torch.tensor( np.load(fp) ).float().to(device)
         self.beta = torch.tensor( np.load(fp) ).float().to(device)
         self.tau = torch.tensor( np.load(fp) ).float().to(device)
@@ -230,8 +204,8 @@ class TopPELayer(PELayer):
         self.is_input = False
         self.expectation = [] #torch.zeros(n).float().to(device)  # container for constant input
         self.beta = torch.tensor(0., dtype=torch.float32).to(device)  # relative weight of FF inputs (vs FB)
-        self.sigma = softmax
-        self.sigma_p = softmax_p
+        # self.sigma = softmax
+        # self.sigma_p = softmax_p
 
     def Allocate(self, batch_size=1):
         old_batch_size = self.batch_size
@@ -296,39 +270,6 @@ class TopPELayer(PELayer):
 
 
 
-def logistic(v):
-    return torch.reciprocal( torch.add( torch.exp(-v), 1.) )
-
-def logistic_p(v):
-    lv = logistic(v)
-    return lv*(1.-lv)
-    #return torch.addcmul( torch.zeros_like(v) , lv , torch.neg(torch.add(lv, -1)) ) 
-
-def tanh(v):
-    return torch.tanh(v)
-
-def tanh_p(v):
-    return 1. - torch.pow(torch.tanh(v),2)
-    #return torch.add( torch.neg( torch.pow( torch.tanh(v),2) ) , 1.)
-
-def identity(v):
-    return v
-
-def identity_p(v):
-    return torch.ones_like(v)
-
-def softmax(v):
-    z = torch.exp(v)
-    if len(np.shape(z))==1:
-        s = torch.sum(z)
-        return z/s
-    else:
-        s = torch.sum(z, dim=1)
-        return z/s[np.newaxis,:].transpose(1,0).repeat([1,np.shape(v)[1]])
-
-def softmax_p(v):
-    z = softmax(v)
-    return z*(1.-z)
 
 
 

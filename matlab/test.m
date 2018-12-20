@@ -24,6 +24,7 @@ for its = 1:iterations
 end
 %calculate errors
 [rmse] = rms_error(out, x_output);
+disp(x_output);
 end
 
 

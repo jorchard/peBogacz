@@ -24,50 +24,86 @@ else:
 #============================================================
 class Connection(object):
 
-	def __init__(self, b=None, a=None, W=None, M=None):
-	    '''
-	    Connection(b, a, W=None, M=None)
+	def __init__(self, b=None, a=None, act=None, W=None, M=None):
+		'''
+		Connection(b, a, W=None, M=None)
 
-	    Create a connection between two layers.
+		Create a connection between two layers.
 
-	    Inputs:
-	      b is the layer (object) below
-	      a is the later (object) abover
-	      W and M can be supplied (optional)
-	    '''
-	    ltypes = (Layer.PELayer, Layer.InputPELayer, Layer.TopPELayer)
-	    if isinstance(b, ltypes) or isinstance(a, ltypes):
-	        self.below = b
-	        self.above = a
+		Inputs:
+		  b is the layer (object) below
+		  a is the later (object) abover
+		  W and M can be supplied (optional)
+		'''
+		ltypes = (Layer.PELayer, Layer.InputPELayer, Layer.TopPELayer)
+		if isinstance(b, ltypes) or isinstance(a, ltypes):
+			self.below = b
+			self.above = a
 
-	        self.below_idx = self.below.idx
-	        self.above_idx = self.above.idx
+			self.below_idx = self.below.idx
+			self.above_idx = self.above.idx
 
-	        Wgiven = hasattr(W, '__len__')
-	        Mgiven = hasattr(M, '__len__')
+			Wgiven = hasattr(W, '__len__')
+			Mgiven = hasattr(M, '__len__')
+			af_given = hasattr(M, '__len__')
 
-	        if Wgiven:
-	            self.W = torch.tensor(W).float().to(device)
-	        else:
-	            self.W = torch.randn( b.n, a.n, dtype=torch.float32, device=device) / np.sqrt(b.n)
+			if Wgiven:
+			    self.W = torch.tensor(W).float().to(device)
+			else:
+			    #self.W = torch.randn( b.n, a.n, dtype=torch.float32, device=device) / np.sqrt(b.n)
+			    self.W = ( torch.rand( b.n, a.n, dtype=torch.float32, device=device) - 0.5 ) *2*np.sqrt(6)/np.sqrt(a.n+b.n)
 
-	        if Mgiven:
-	            self.M = torch.tensor(M).float().to(device)
-	        else:
-	            self.M = torch.randn( a.n, b.n, dtype=torch.float32, device=device) / np.sqrt(b.n)
+			if Mgiven:
+			    self.M = torch.tensor(M).float().to(device)
+			else:
+			    #self.M = torch.randn( a.n, b.n, dtype=torch.float32, device=device) / np.sqrt(b.n)
+			    self.M = torch.tensor(deepcopy(self.W.transpose(1,0))).float().to(device)
 
-	        self.dWdt = torch.zeros( b.n, a.n, dtype=torch.float32, device=device)
-	        self.dMdt = torch.zeros( a.n, b.n, dtype=torch.float32, device=device)
+			self.dWdt = torch.zeros( b.n, a.n, dtype=torch.float32, device=device)
+			self.dMdt = torch.zeros( a.n, b.n, dtype=torch.float32, device=device)
+
+			if af_given:
+				self.SetActivationFunction(af)
+			else:
+				self.activation_function = 'tanh'
+				self.sigma = tanh  # activation function
+				self.sigma_p = tanh_p
+		else:
+			self.below = []
+			self.above = []
+			self.below_idx = -99
+			self.above_idx = -99
+			self.W = []
+			self.M = []
+			self.dWdt = []
+			self.dMdt = []
+			self.activation_function = 'tanh'
+			self.sigma = tanh  # activation function
+			self.sigma_p = tanh_p
+		self.learn = True
+
+	def SetActivationFunction(self, fcn):
+	    if fcn=='tanh':
+	        self.activation_function = 'tanh'
+	        self.sigma = tanh
+	        self.sigma_p = tanh_p
+	    elif fcn=='logistic':
+	        self.activation_function = 'logistic'
+	        self.sigma = logistic
+	        self.sigma_p = logistic_p
+	    elif fcn=='identity':
+	        self.activation_function = 'identity'
+	        self.sigma = identity
+	        self.sigma_p = identity_p
+	    elif fcn=='softmax':
+	        self.activation_function = 'softmax'
+	        self.sigma = softmax
+	        self.sigma_p = softmax_p
 	    else:
-	    	self.below = []
-	    	self.above = []
-	    	self.below_idx = -99
-	    	self.above_idx = -99
-	    	self.W = []
-	    	self.M = []
-	    	self.dWdt = []
-	    	self.dMdt = []
-	    self.learn = True
+	        print('Activation function not recognized, using logistic')
+	        self.activation_function = 'logistic'
+	        self.sigma = logistic
+	        self.sigma_p = logistic_p
 
 	def MakeIdentity(self):
 		if self.below.n!=self.above.n:
@@ -98,6 +134,7 @@ class Connection(object):
 		np.save(fp, self.W)
 		np.save(fp, self.M)
 		np.save(fp, self.learn)
+		np.save(fp, self.activation_function)
 
 
 
@@ -119,6 +156,7 @@ class NeuralNetwork(object):
 	    self.learning_blackout = 1.0 # how many seconds to wait before turning learning on
 	    self.t_history = []
 	    self.learning_tau = 2.
+	    self.l_rate = 0.2
 	    self.learn = False
 	    self.learn_weights = True
 	    self.learn_biases = True
@@ -169,26 +207,29 @@ class NeuralNetwork(object):
 			W = np.load(fp)
 			M = np.load(fp)
 			learn = np.asscalar( np.load(fp) )
+			activation_function = str( np.load(fp) )
 			self.Connect(bi, ai, W=W, M=M)
 			self.connections[-1].learn = learn
+			self.connections[-1].SetActivationFunction(activation_function)
 		fp.close()
 
 
-	def Connect(self, prei, posti, W=None, M=None):
+	def Connect(self, prei, posti, act=None, W=None, M=None):
 	    '''
-	    Connect(prei, posti, W=None, M=None)
+	    Connect(prei, posti, act=af, W=None, M=None)
 
 	    Connect two layers.
 
 	    Inputs:
 	      prei is the index of the lower layer
 	      posti is the index of the upper layer
+	      af is one of 'identity', 'logistic', 'tanh', or 'softmax'
 	    '''
 	    preL = self.layers[prei]
 	    postL = self.layers[posti]
 	    preL.layer_above = postL
 	    postL.layer_below = preL
-	    self.connections.append(Connection(preL, postL, W=W, M=M))
+	    self.connections.append(Connection(preL, postL, act=act, W=W, M=M))
 
 
 	def AddLayer(self, L):
@@ -220,9 +261,10 @@ class NeuralNetwork(object):
 	        del self.t_history
 	        self.t_history = []
 	        self.t = 0.
-	        print('Allocating')
+	        #print('Allocating')
 	        for l in self.layers:
 	            l.Allocate(batch_size=proposed_batch_size)
+	        #print('Re-Allocating to '+str(proposed_batch_size))
 
 
 	def SetInput(self, x):
@@ -244,9 +286,9 @@ class NeuralNetwork(object):
 		    blw = c.below
 		    abv = c.above
 		    # e <-- v
-		    blw.dedt -= abv.sigma(abv.v)@c.M + blw.b
+		    blw.dedt -= c.sigma(abv.v)@c.M + blw.b
 		    # e --> v
-		    abv.dvdt += abv.alpha*(blw.e@c.W)*abv.sigma_p(abv.v)
+		    abv.dvdt += abv.alpha*(blw.e@c.W)*c.sigma_p(abv.v)
 		    # if a.is_top:
 		    #     a.dvdt += a.alpha*(b.e@c.W)*a.sigma_p(a.v)
 		    # else:
@@ -254,11 +296,13 @@ class NeuralNetwork(object):
 
 		    if c.learn==True:
 		        if self.batch_size==1:
-		            c.dMdt += abv.sigma(abv.v.reshape([abv.n,1])) @ blw.e.reshape([1,blw.n])
-		            c.dWdt += blw.e.reshape([blw.n,1]) @ abv.sigma(abv.v.reshape([1,abv.n]))
+		            c.dMdt += c.sigma(abv.v.reshape([abv.n,1])) @ blw.e.reshape([1,blw.n])
+		            c.dWdt += blw.e.reshape([blw.n,1]) @ c.sigma(abv.v.reshape([1,abv.n]))
+		            #c.dWdt += blw.e.reshape([blw.n,1]) @ abv.e.reshape([1,abv.n])
 		        else:
-		            c.dMdt += abv.sigma(abv.v).transpose(1,0) @ blw.e
-		            c.dWdt += blw.e.transpose(1,0) @ abv.sigma(abv.v)
+		            c.dMdt += c.sigma(abv.v).transpose(1,0) @ blw.e
+		            c.dWdt += blw.e.transpose(1,0) @ c.sigma(abv.v)
+		            #c.dWdt += blw.e.transpose(1,0) @ abv.e
 
 		        blw.dbdt += torch.sum(blw.e, dim=0)
 
@@ -270,15 +314,15 @@ class NeuralNetwork(object):
 		    	# The state node is not updated in a bottom input layer
 		        #l.dvdt += l.alpha*(l.sensory - l.v) - l.beta*l.e
 		        #l.dedt += l.sigma(l.v) - l.e
-		        l.dedt += l.v - l.e
+		        l.dedt += l.v - l.Sigma*l.e
 		    elif l.is_top:
-		        l.dvdt -= l.beta*l.e
+		        l.dvdt -= l.beta*l.e #+ 0.01*l.v
 		        #l.dedt += l.sigma(l.v) - l.expectation - l.e
-		        l.dedt += l.v - l.expectation - l.e
+		        l.dedt += l.v - l.expectation - l.Sigma*l.e
 		    else:
-		        l.dvdt -= l.beta*l.e
+		        l.dvdt -= l.beta*l.e #+ 0.01*l.v
 		        #l.dedt += l.sigma(l.v) - l.e
-		        l.dedt += l.v - l.e
+		        l.dedt += l.v - l.Sigma*l.e
 
 
 	def Step(self, dt=0.01):
@@ -335,9 +379,9 @@ class NeuralNetwork(object):
 	def ShowWeights(self):
 	    for idx in range(len(self.layers)-1):
 	        print('  W'+str(idx)+str(idx+1)+' = ')
-	        print(str(np.array(self.W[idx])))
+	        print(str(np.array(self.connections[idx].W)))
 	        print('  M'+str(idx+1)+str(idx)+' = ')
-	        print(str(np.array(self.M[idx])))
+	        print(str(np.array(self.connections[idx].M)))
 
 	def ShowBias(self):
 	    for idx, layer in enumerate(self.layers):
@@ -356,25 +400,45 @@ class NeuralNetwork(object):
 		    for layer in self.layers:
 		        layer.Record()
 
+
 	def BackprojectExpectation(self, y):
 		'''
-		Initialize state nodes from the top-layer expection.
-		Then update the error nodes using the backprop forumula.
+		Initialize all the state nodes from the top-layer expection.
+
+		This does not overwrite the state of layer[0].
 		'''
 		self.Allocate(y)
 		# State nodes
 		self.layers[-1].v = torch.tensor(y).float().to(device)
 		for idx in range(self.n_layers-2,0,-1):
-			v = self.layers[idx+1].sigma(self.layers[idx+1].v)@self.connections[idx].M + self.layers[idx].b
+			v = self.connections[idx].sigma(self.layers[idx+1].v)@self.connections[idx].M + self.layers[idx].b
+			#v = self.layers[idx+1].sigma(self.layers[idx+1].v)@self.connections[idx].M + self.layers[idx].b
 			self.layers[idx].v = torch.tensor(v).float().to(device)
+		mu0 = self.connections[0].sigma(self.layers[1].v) @ self.connections[0].M + self.layers[0].b
+		#mu0 = self.layers[1].sigma(self.layers[1].v) @ self.connections[0].M + self.layers[0].b
+		return mu0
 
-	def PropagateErrors(self, x):
-		# Error nodes
-		self.SetInput(x)
-		mu0 = self.layers[1].sigma(self.layers[1].v)@self.connections[0].M + self.layers[0].b
-		self.layers[0].e = self.layers[0].v - mu0
-		for idx in range(1, self.n_layers):
-			self.layers[idx].e = ( self.layers[idx-1].e @ self.connections[idx-1].W ) * self.layers[idx].sigma_p(self.layers[idx].v)
+
+	def OverwriteErrors(self):
+		for idx in range(self.n_layers-1):
+			self.layers[idx].e = self.layers[idx].v - self.connections[idx].sigma(self.layers[idx+1].v) @ self.connections[idx].M - self.layers[idx].b
+
+
+	def OverwriteStates(self):
+		for idx in range(1, self.n_layers-1):
+			# abv.alpha*(blw.e@c.W)*c.sigma_p(abv.v)
+			self.layers[idx].v += 0.2*( (self.layers[idx-1].e @ self.connections[idx-1].W) * self.connections[idx-1].sigma_p(self.layers[idx].v) - self.layers[idx].e )
+
+
+	# def PropagateErrors(self, x):
+	# 	# Error nodes
+	# 	self.SetInput(x)
+	# 	mu0 = self.connections[0].sigma(self.layers[1].v)@self.connections[0].M + self.layers[0].b
+	# 	#mu0 = self.layers[1].sigma(self.layers[1].v)@self.connections[0].M + self.layers[0].b
+	# 	self.layers[0].e = self.layers[0].v - mu0
+	# 	for idx in range(1, self.n_layers):
+	# 		self.layers[idx].e = ( self.layers[idx-1].e @ self.connections[idx-1].W ) * self.connections[idx-1].sigma_p(self.layers[idx].v)
+	# 		#self.layers[idx].e = ( self.layers[idx-1].e @ self.connections[idx-1].W ) * self.layers[idx].sigma_p(self.layers[idx].v)
 
 
 	def Run(self, T, dt):
@@ -393,33 +457,117 @@ class NeuralNetwork(object):
 		    if self.probe_on:
 		    	self.Record()
 
+	def rms_error(self, x, y):
+		self.BackprojectExpectation(y)
+		mu0 = self.GenerateSamples()
+		rms = torch.sqrt(torch.mean(torch.sum(torch.pow(x-mu0, 2), 1)/np.shape(x)[1]))
+		#print(mu0)
+		return rms
+
+	def GenerateSamples(self):
+		mu0 = self.connections[0].sigma(self.layers[1].v) @ self.connections[0].M + self.layers[0].b
+		return mu0
 
 	def Learn(self, x, t, T=2., epochs=5, dt=0.01, batch_size=10, shuffle=True):
 		#net.learning_tau = 30. #torch.tensor(batch_size).float().to(device) * 10.
-		fp = FloatProgress(min=0,max=epochs*len(x))  
+		self.SetBidirectional()
+		fp = FloatProgress(min=0,max=epochs*len(x))
+		rms_history = []
+		rms_history.append(self.rms_error(x,t))
 		display(fp)
 		for k in range(epochs):
-		    batches = MakeBatches(x, t, batch_size=batch_size, shuffle=shuffle)
-		    for samp in batches:
-		        #net.Reset()
-		        self.BackprojectExpectation(samp[1])
-		        self.PropagateErrors(samp[0])
-		        self.Infer(T, samp[0], samp[1], dt=dt, learning=True)
-		        fp.value += batch_size
+			batches = MakeBatches(x, t, batch_size=batch_size, shuffle=shuffle)
+
+			for samp in batches:
+				#net.Reset()
+				if batch_size==1 and len(np.shape(samp[0]))==2:
+					self.BackprojectExpectation(samp[1][0])
+					self.PropagateErrors(samp[0][0])
+					self.Infer(T, samp[0][0], samp[1][0], dt=dt, learn=True)
+				else:
+					self.BackprojectExpectation(samp[1])
+					self.PropagateErrors(samp[0])
+					self.Infer(T, samp[0], samp[1], dt=dt, learn=True)
+				fp.value += batch_size
+			rms_history.append(self.rms_error(x, t))
+		return np.array(rms_history)
+
+	def FastLearn(self, x, t, T=10, epochs=5, batch_size=10, shuffle=True):
+		'''
+		Implementation of Whittington & Bogacz 2017
+
+		'''
+
+		rms_history = []
+		rms_history.append(self.rms_error(x,t))
+		fp = FloatProgress(min=0,max=epochs)
+		display(fp)
+		# for each epoch
+		for k in range(epochs):
+
+			batches = MakeBatches(x, t, batch_size=batch_size, shuffle=shuffle)
+
+			mb = batches[0]
+
+			# Run learn_pc
+			# 1. Run a FB pass, ignoring the error nodes
+			self.BackprojectExpectation(mb[1])
+
+			# 2. Set the desired output
+			self.layers[0].SetInput(mb[0])
+
+			# 3. Run infer_ps
+			#    which iteratively updates errors and states alternately
+			for k in range(T):
+				self.OverwriteErrors()
+				self.OverwriteStates()
+
+			# 4. Calculate gradients from the error nodes
+			for c in self.connections:
+				blw = c.below
+				abv = c.above
+				if self.batch_size==1:
+				    c.dMdt = c.sigma(abv.v.reshape([abv.n,1])) @ blw.e.reshape([1,blw.n])
+				    c.dWdt = blw.e.reshape([blw.n,1]) @ c.sigma(abv.v.reshape([1,abv.n]))
+				else:
+				    c.dMdt = c.sigma(abv.v).transpose(1,0) @ blw.e
+				    c.dWdt = blw.e.transpose(1,0) @ c.sigma(abv.v)
+				# Gradient w.r.t. biases
+				blw.dbdt = torch.sum(blw.e, dim=0)
+
+			# 5. Update weights using gradients
+			for c in self.connections:
+				c.W += self.l_rate * c.dWdt
+				c.M += self.l_rate * c.dMdt
+				c.below.b += self.l_rate * c.below.dbdt
+
+			rms_history.append(self.rms_error(x, t))
+			fp.value += batch_size
+		return np.array(rms_history)
 
 
-	def Infer(self, T, x, y, dt=0.01, learning=False):
-	    self.learn = learning
+	def SetBidirectional(self):
+		for l in self.layers:
+			l.SetBidirectional()
+			
+	def SetFF(self):
+		for l in self.layers:
+			l.SetFF()
+			
+
+	def Infer(self, T, x, y, dt=0.01, learn=False):
+	    self.learn = learn
 	    self.layers[1].SetBidirectional()
-	    self.layers[-1].SetBidirectional()
+	    #self.layers[-1].SetBidirectional()
+	    self.layers[-1].SetFB()
 	    self.SetInput(x)
 	    self.SetExpectation(y)
-
 	    self.Run(T, dt=dt)
 
 	def Predict(self, T, x, dt=0.01):
 	    self.learn = False
 	    #self.layers[1].SetFF()
+	    self.layers[1].SetBidirectional()
 	    self.layers[-1].SetFF()
 	    self.SetInput(x)
 	    self.Run(T, dt=dt)
@@ -431,7 +579,7 @@ class NeuralNetwork(object):
 	    self.layers[-1].SetBidirectional()
 	    self.SetExpectation(y)
 	    self.Run(T, dt=dt)
-	    mu0 = self.layers[1].sigma(self.layers[1].v) @ self.connections[0].M + self.layers[0].b
+	    mu0 = self.connections[0].sigma(self.layers[1].v) @ self.connections[0].M + self.layers[0].b
 	    return mu0
 
 
@@ -473,6 +621,40 @@ def MakeBatches(data_in, data_out, batch_size=10, shuffle=True):
 	        else:
 	            batches.append( [din.float().to(device) , dout.float().to(device)] )
     return batches
+
+def logistic(v):
+    return torch.reciprocal( torch.add( torch.exp(-v), 1.) )
+
+def logistic_p(v):
+    lv = logistic(v)
+    return lv*(1.-lv)
+    #return torch.addcmul( torch.zeros_like(v) , lv , torch.neg(torch.add(lv, -1)) ) 
+
+def tanh(v):
+    return torch.tanh(v)
+
+def tanh_p(v):
+    return 1. - torch.pow(torch.tanh(v),2)
+    #return torch.add( torch.neg( torch.pow( torch.tanh(v),2) ) , 1.)
+
+def identity(v):
+    return v
+
+def identity_p(v):
+    return torch.ones_like(v)
+
+def softmax(v):
+    z = torch.exp(v)
+    if len(np.shape(z))==1:
+        s = torch.sum(z)
+        return z/s
+    else:
+        s = torch.sum(z, dim=1)
+        return z/s[np.newaxis,:].transpose(1,0).repeat([1,np.shape(v)[1]])
+
+def softmax_p(v):
+    z = softmax(v)
+    return z*(1.-z)
 
 def OneHot(z):
     y = np.zeros(np.shape(z))

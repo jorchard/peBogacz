@@ -19,33 +19,34 @@ params.beta = 0.2; % euler integration constant
 sin = [0 0 1 1; ...
        0 1 0 1];
 sout = [1 0 0 1];
-[sin, sout] = GenerateData(500);
+%[sin, sout] = GenerateData(500);
 %sin = [-0.08027386, -0.30823911];
 %sout = [-0.06132582, -0.2608663];
-sin = sin';
-sout = sout';
+% sin = sin';
+% sout = sout';
 
-params.neurons = [2 4 2]; %neurons in each layer
-params.type = {'lin' 'logsig' 'lin'};
+params.neurons = [2 5 1]; %neurons in each layer
+%params.type = {'logsig' 'logsig'}; % 'lin'};
+params.type = {'tanh' 'tanh'}; % 'lin'};
 
 params.n_layers = length(params.neurons); % number of layers
 var = ones(1, params.n_layers); % puts variance on all layers as 1
 var(end)=1; % variance on last layer
 params.var=var;
 
-plot(sin(1,:), sin(2,:), 'r.');
-hold on;
-plot(sout(1,:), sout(2,:), 'b.');
-hold off;
+% plot(sin(1,:), sin(2,:), 'r.');
+% hold on;
+% plot(sout(1,:), sout(2,:), 'b.');
+% hold off;
 
-[w_pc, b_pc] = my_w_init(params);
+[w_pc, b_pc] = my_w_init2(params);
 %% 
 
 plotevery = 50;
 run_num=1;
 
 for run = 1:run_num;
-    [w_pc, b_pc] = my_w_init(params); % get weights and biases parameters
+    [w_pc, b_pc] = my_w_init2(params); % get weights and biases parameters
     w_ann=w_pc;
     b_ann=b_pc;
     counter =1;
@@ -66,6 +67,11 @@ for run = 1:run_num;
         end
     end
 end
+
+%% Test
+[rms_error_pc, x_gen] = test(sin,sout,w_pc,b_pc,params);
+
+
 
 %%
 [rms, xout] = test(sin, sout, w_pc, b_pc, params);
