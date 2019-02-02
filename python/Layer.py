@@ -42,7 +42,7 @@ class PELayer:
             self.dbdt = []
 
         # Error node variance for feedback
-        self.Sigma = 1. #torch.eye(self.n, dtype=torch.float32).to(device)
+        self.variance = 1. #torch.eye(self.n, dtype=torch.float32).to(device)
 
         # Misc. parameters
         #self.type = ''
@@ -54,8 +54,9 @@ class PELayer:
 
         # self.alpha = torch.tensor(1.).float().to(device)  # forward weight
         # self.beta = torch.tensor(1.).float().to(device)   # backward weight
-        self.alpha = 1.
-        self.beta = 1.
+        self.alpha = 1.  # FF weight (-> v from e below)
+        self.beta = 1.   # FB influence (v<- from corresponding e)
+        self.Sigma = 1.
 
         self.tau = 0.1 #torch.tensor(0.1).float().to(device)  # Dynamic time constant
         self.probe_on = False
@@ -68,16 +69,19 @@ class PELayer:
         np.save(fp, self.n)
         np.save(fp, self.is_input)
         np.save(fp, self.is_top)
+        np.save(fp, self.variance)
         #np.save(fp, self.activation_function)
         np.save(fp, self.alpha)
         np.save(fp, self.beta)
         np.save(fp, self.tau)
         np.save(fp, self.b)
+        
 
     def Load(self, fp):
         self.n = np.asscalar( np.load(fp) )
         self.is_input = np.asscalar( np.load(fp) )
         self.is_top = np.asscalar( np.load(fp) )
+        self.variance = np.asscalar( np.load (fp) )
         # self.activation_function = str( np.load(fp) )
         # self.SetActivationFunction(self.activation_function)
         self.alpha = torch.tensor( np.load(fp) ).float().to(device)
@@ -104,7 +108,7 @@ class PELayer:
                 self.dedt = torch.zeros([self.n], device=device)
 
     def Release(self):
-        del self.v, self.e, self.dvdt, self.dedt, self.b
+        del self.v, self.e, self.dvdt, self.dedt, self.b, self.variance
 
     def SetBias(self, b):
         for k in range(len(self.b)):
@@ -119,6 +123,9 @@ class PELayer:
     def ShowBias(self):
         print('  b = '+str(np.array(self.b)))
 
+    def PEError(self):
+        return torch.sum(self.e**2)
+
     def Reset(self):
         del self.v_history, self.e_history
         self.v_history = []
@@ -128,6 +135,10 @@ class PELayer:
         if isinstance(self.e, (torch.Tensor)):
             self.e.zero_()
 
+    def Clamp(self):
+        self.alpha = 0.
+        self.beta = 0.
+        
     def SetFF(self):
         self.alpha = 1. #torch.tensor(1.).float().to(device)
         self.beta =  0. #torch.tensor(0.).float().to(device)
@@ -144,6 +155,9 @@ class PELayer:
         self.alpha = 0. #torch.tensor(1.).float().to(device)
         self.beta =  0. #torch.tensor(1.).float().to(device)
 
+    def SetVariance(self, variance=1.0):
+        self.variance = variance
+        
     def Step(self, dt=0.01):
         k = dt/self.tau
         self.v = torch.add(self.v, k, self.dvdt)
@@ -218,6 +232,9 @@ class TopPELayer(PELayer):
             else:
                 self.expectation = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
 
+    def PEError(self):
+        return 0.
+        
     def SetExpectation(self, t):
         self.expectation = torch.tensor(copy.deepcopy(t)).float().to(device)
 

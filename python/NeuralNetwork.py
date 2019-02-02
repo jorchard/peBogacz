@@ -3,6 +3,7 @@
 import numpy as np
 import Layer
 import torch
+from torch.autograd import Variable
 from copy import deepcopy
 from IPython.display import display
 from ipywidgets import FloatProgress
@@ -45,25 +46,30 @@ class Connection(object):
 
 			Wgiven = hasattr(W, '__len__')
 			Mgiven = hasattr(M, '__len__')
-			af_given = hasattr(M, '__len__')
+			af_given = hasattr(act, '__len__')
 
 			if Wgiven:
 			    self.W = torch.tensor(W).float().to(device)
 			else:
-			    #self.W = torch.randn( b.n, a.n, dtype=torch.float32, device=device) / np.sqrt(b.n)
-			    self.W = ( torch.rand( b.n, a.n, dtype=torch.float32, device=device) - 0.5 ) *2*np.sqrt(6)/np.sqrt(a.n+b.n)
+			    self.W = torch.randn( b.n, a.n, dtype=torch.float32, device=device) / np.sqrt(b.n)
+			    # This distribution is taken from the caption of Fig. 6 in Wittington and Bogacz
+			    #self.W = ( torch.rand( b.n, a.n, dtype=torch.float32, device=device) - 0.5 ) *8*np.sqrt(6)/np.sqrt(a.n+b.n)
 
 			if Mgiven:
 			    self.M = torch.tensor(M).float().to(device)
 			else:
 			    #self.M = torch.randn( a.n, b.n, dtype=torch.float32, device=device) / np.sqrt(b.n)
-			    self.M = torch.tensor(deepcopy(self.W.transpose(1,0))).float().to(device)
-
+			    self.M = torch.randn( a.n, b.n, dtype=torch.float32, device=device) / np.sqrt(b.n)
+                
 			self.dWdt = torch.zeros( b.n, a.n, dtype=torch.float32, device=device)
 			self.dMdt = torch.zeros( a.n, b.n, dtype=torch.float32, device=device)
 
+			self.W_decay = 0.0
+			self.M_decay = 0.0
+            
 			if af_given:
-				self.SetActivationFunction(af)
+				self.SetActivationFunction(act)
+				print(act)                
 			else:
 				self.activation_function = 'tanh'
 				self.sigma = tanh  # activation function
@@ -105,6 +111,10 @@ class Connection(object):
 	        self.sigma = logistic
 	        self.sigma_p = logistic_p
 
+	def SetDecay(self, W_decay=0.0, M_decay=0.0):
+		self.W_decay = W_decay
+		self.M_decay = M_decay
+            
 	def MakeIdentity(self):
 		if self.below.n!=self.above.n:
 			print('Connection matrix is not square.')
@@ -133,6 +143,8 @@ class Connection(object):
 		np.save(fp, self.above_idx)
 		np.save(fp, self.W)
 		np.save(fp, self.M)
+		np.save(fp, self.W_decay)
+		np.save(fp, self.M_decay)
 		np.save(fp, self.learn)
 		np.save(fp, self.activation_function)
 
@@ -162,7 +174,11 @@ class NeuralNetwork(object):
 	    self.learn_biases = True
 	    self.batch_size = 0
 	    self.probe_on = False
-
+	    self.rms_history = []
+	    self.pe_error_history = []
+	    self.test_error_history = []        
+	    self.train_error_history = []
+        
 
 	def Release(self):
 	    for l in self.layers:
@@ -206,11 +222,14 @@ class NeuralNetwork(object):
 			ai = np.asscalar( np.load(fp) ) # above_idx
 			W = np.load(fp)
 			M = np.load(fp)
+			W_decay = np.asscalar( np.load(fp) )
+			M_decay = np.asscalar( np.load(fp) )
 			learn = np.asscalar( np.load(fp) )
 			activation_function = str( np.load(fp) )
 			self.Connect(bi, ai, W=W, M=M)
 			self.connections[-1].learn = learn
 			self.connections[-1].SetActivationFunction(activation_function)
+			self.connections[-1].SetDecay(W_decay=W_decay, M_decay=M_decay)
 		fp.close()
 
 
@@ -268,12 +287,12 @@ class NeuralNetwork(object):
 
 
 	def SetInput(self, x):
-	    self.Allocate(x)
+	    #self.Allocate(x)
 	    self.layers[0].SetInput(x)
 
 
 	def SetExpectation(self, x):
-	    self.Allocate(x)
+	    #self.Allocate(x)
 	    self.layers[-1].SetExpectation(x)
 
 
@@ -401,44 +420,15 @@ class NeuralNetwork(object):
 		        layer.Record()
 
 
-	def BackprojectExpectation(self, y):
-		'''
-		Initialize all the state nodes from the top-layer expection.
-
-		This does not overwrite the state of layer[0].
-		'''
-		self.Allocate(y)
-		# State nodes
-		self.layers[-1].v = torch.tensor(y).float().to(device)
-		for idx in range(self.n_layers-2,0,-1):
-			v = self.connections[idx].sigma(self.layers[idx+1].v)@self.connections[idx].M + self.layers[idx].b
-			#v = self.layers[idx+1].sigma(self.layers[idx+1].v)@self.connections[idx].M + self.layers[idx].b
-			self.layers[idx].v = torch.tensor(v).float().to(device)
-		mu0 = self.connections[0].sigma(self.layers[1].v) @ self.connections[0].M + self.layers[0].b
-		#mu0 = self.layers[1].sigma(self.layers[1].v) @ self.connections[0].M + self.layers[0].b
-		return mu0
-
-
-	def OverwriteErrors(self):
-		for idx in range(self.n_layers-1):
-			self.layers[idx].e = self.layers[idx].v - self.connections[idx].sigma(self.layers[idx+1].v) @ self.connections[idx].M - self.layers[idx].b
-
-
-	def OverwriteStates(self):
-		for idx in range(1, self.n_layers-1):
-			# abv.alpha*(blw.e@c.W)*c.sigma_p(abv.v)
-			self.layers[idx].v += 0.2*( (self.layers[idx-1].e @ self.connections[idx-1].W) * self.connections[idx-1].sigma_p(self.layers[idx].v) - self.layers[idx].e )
-
-
-	# def PropagateErrors(self, x):
-	# 	# Error nodes
-	# 	self.SetInput(x)
-	# 	mu0 = self.connections[0].sigma(self.layers[1].v)@self.connections[0].M + self.layers[0].b
+	def PropagateErrors(self, x):
+		# Error nodes
+		self.SetInput(x)
+		mu0 = self.connections[0].sigma(self.layers[1].v)@self.connections[0].M + self.layers[0].b
 	# 	#mu0 = self.layers[1].sigma(self.layers[1].v)@self.connections[0].M + self.layers[0].b
-	# 	self.layers[0].e = self.layers[0].v - mu0
-	# 	for idx in range(1, self.n_layers):
-	# 		self.layers[idx].e = ( self.layers[idx-1].e @ self.connections[idx-1].W ) * self.connections[idx-1].sigma_p(self.layers[idx].v)
-	# 		#self.layers[idx].e = ( self.layers[idx-1].e @ self.connections[idx-1].W ) * self.layers[idx].sigma_p(self.layers[idx].v)
+		self.layers[0].e = self.layers[0].v - mu0
+		for idx in range(1, self.n_layers):
+			self.layers[idx].e = ( self.layers[idx-1].e @ self.connections[idx-1].W ) * self.connections[idx-1].sigma_p(self.layers[idx].v)
+			#self.layers[idx].e = ( self.layers[idx-1].e @ self.connections[idx-1].W ) * self.layers[idx].sigma_p(self.layers[idx].v)
 
 
 	def Run(self, T, dt):
@@ -464,6 +454,20 @@ class NeuralNetwork(object):
 		#print(mu0)
 		return rms
 
+	def PEError(self):
+		'''
+		pe_error = NN.PEError()
+
+		Returns the sum of the squares of all the error nodes.
+		'''
+		total_pe_error = 0.
+		#l_counter = 0
+		for l in self.layers:
+			#print('Layer '+str(l_counter))
+			#l_counter += 1
+			total_pe_error += l.PEError()
+		return total_pe_error
+
 	def GenerateSamples(self):
 		mu0 = self.connections[0].sigma(self.layers[1].v) @ self.connections[0].M + self.layers[0].b
 		return mu0
@@ -472,8 +476,7 @@ class NeuralNetwork(object):
 		#net.learning_tau = 30. #torch.tensor(batch_size).float().to(device) * 10.
 		self.SetBidirectional()
 		fp = FloatProgress(min=0,max=epochs*len(x))
-		rms_history = []
-		rms_history.append(self.rms_error(x,t))
+		self.rms_history.append(self.rms_error(x,t))
 		display(fp)
 		for k in range(epochs):
 			batches = MakeBatches(x, t, batch_size=batch_size, shuffle=shuffle)
@@ -489,63 +492,202 @@ class NeuralNetwork(object):
 					self.PropagateErrors(samp[0])
 					self.Infer(T, samp[0], samp[1], dt=dt, learn=True)
 				fp.value += batch_size
-			rms_history.append(self.rms_error(x, t))
-		return np.array(rms_history)
+			self.rms_history.append(self.rms_error(x, t))
 
-	def FastLearn(self, x, t, T=10, epochs=5, batch_size=10, shuffle=True):
+
+	def BackprojectExpectation(self, y):
+		'''
+		Initialize all the state nodes from the top-layer expection.
+
+		This does not overwrite the state of layer[0].
+		'''
+		#self.Allocate(y)
+		# State nodes
+		self.layers[-1].v = torch.tensor(y).float().to(device)
+		for idx in range(self.n_layers-2, 0,-1):
+			v = self.connections[idx].sigma(self.layers[idx+1].v)@self.connections[idx].M + self.layers[idx].b
+			#v = self.layers[idx+1].sigma(self.layers[idx+1].v)@self.connections[idx].M + self.layers[idx].b
+			self.layers[idx].v = torch.tensor(v).float().to(device)
+		mu0 = self.connections[0].sigma(self.layers[1].v) @ self.connections[0].M + self.layers[0].b
+		#mu0 = self.layers[1].sigma(self.layers[1].v) @ self.connections[0].M + self.layers[0].b
+		return mu0
+
+
+	def OverwriteErrors(self):
+		for idx in range(0, self.n_layers-1):
+			self.layers[idx].e = (self.layers[idx].v - (self.connections[idx].sigma(self.layers[idx+1].v) @ self.connections[idx].M) - self.layers[idx].b) / self.layers[idx].variance
+
+
+	def OverwriteStates(self):
+		for idx in range(1, self.n_layers-1):
+			# abv.alpha*(blw.e@c.W)*c.sigma_p(abv.v)
+			self.layers[idx].v += 0.2*( (self.layers[idx-1].e @ self.connections[idx-1].W) * self.connections[idx-1].sigma_p(self.layers[idx].v) - self.layers[idx].e )
+
+
+	def FastLearn(self, x, t, test=False, T=20, epochs=5, Beta_one=0.9, Beta_two=0.999, ep=0.00000001, batch_size=10, noise=False, freeze=10, shuffle=True):
 		'''
 		Implementation of Whittington & Bogacz 2017
 
 		'''
-
-		rms_history = []
-		rms_history.append(self.rms_error(x,t))
-		fp = FloatProgress(min=0,max=epochs)
+		#Save train and test error by epoch
+		if test:
+			test_length = len(test[0])
+			self.test_error_history.append(self.dataset_error(test[0], test[1], test_length))
+		train_length = len(x)
+		self.train_error_history.append(self.dataset_error(t, x, train_length))
+        
+		fp = FloatProgress(min=0,max=epochs*len(x)/batch_size)
 		display(fp)
-		# for each epoch
-		for k in range(epochs):
+		self.batch_size = batch_size
+        
+		#Initialize Adam parameters
+		alpha = self.l_rate 
 
+		freeze_W = False
+        
+		m = [] #1st momentum vector containing each layer's dMdt, dWdt, and dbdt in that order
+		v = [] #2nd momentum vector with elements identical to above
+		g = [] #vector of all gradients with elements identical to above
+
+		OG_W_decay = [] #Saves the original decay values since they are set to 0 after 11 training epochs
+		OG_M_decay = []
+        
+		for c in self.connections:
+			m.append(c.dMdt)
+			m.append(c.dWdt)
+			m.append(c.below.dbdt)
+
+			v.append(c.dMdt)
+			v.append(c.dWdt)
+			v.append(c.below.dbdt)
+
+			g.append(c.dMdt)
+			g.append(c.dWdt)
+			g.append(c.below.dbdt)
+            
+			OG_W_decay.append(c.W_decay)
+			OG_M_decay.append(c.M_decay)
+
+		time=0 #time step
+
+		for k in range(0, epochs):
+			#Remove multiplicative noise after 13 epochs
+			if k > 12:
+				noise = False
+            
+			#Remove decay after 11 epochs
+			if k > 10 and self.connections[0].W_decay > 0.0:
+				for c in self.connections:
+					c.W_decay = 0.0
+					c.M_decay = 0.0
+                
+			#Do not update W after 'freeze' # of epochs 
+			if k > freeze: 
+				freeze_W = True
+            
+			epoch_pe_error = 0.
 			batches = MakeBatches(x, t, batch_size=batch_size, shuffle=shuffle)
 
-			mb = batches[0]
+			for j in range(0, len(batches)):
+				mb = batches[j]
 
-			# Run learn_pc
-			# 1. Run a FB pass, ignoring the error nodes
-			self.BackprojectExpectation(mb[1])
+				#Perform Adam while loop
+				time += 1
 
-			# 2. Set the desired output
-			self.layers[0].SetInput(mb[0])
+				#Evaluate gradients with respect to objective function at time step t
+				self.BackprojectExpectation(mb[1])
 
-			# 3. Run infer_ps
-			#    which iteratively updates errors and states alternately
-			for k in range(T):
+				# 2. Set the desired output
+				self.layers[0].SetInput(mb[0])
+
+				# 3. Run infer_ps
 				self.OverwriteErrors()
-				self.OverwriteStates()
+				for k in range(0, T):
+					self.OverwriteStates()
+					self.OverwriteErrors()
 
-			# 4. Calculate gradients from the error nodes
-			for c in self.connections:
-				blw = c.below
-				abv = c.above
-				if self.batch_size==1:
-				    c.dMdt = c.sigma(abv.v.reshape([abv.n,1])) @ blw.e.reshape([1,blw.n])
-				    c.dWdt = blw.e.reshape([blw.n,1]) @ c.sigma(abv.v.reshape([1,abv.n]))
-				else:
-				    c.dMdt = c.sigma(abv.v).transpose(1,0) @ blw.e
-				    c.dWdt = blw.e.transpose(1,0) @ c.sigma(abv.v)
-				# Gradient w.r.t. biases
-				blw.dbdt = torch.sum(blw.e, dim=0)
+				epoch_pe_error += self.PEError()
 
-			# 5. Update weights using gradients
-			for c in self.connections:
-				c.W += self.l_rate * c.dWdt
-				c.M += self.l_rate * c.dMdt
-				c.below.b += self.l_rate * c.below.dbdt
+				# 4. Calculate gradients from the error nodes
+				idx = 0 #keeps track of idx in g
 
-			rms_history.append(self.rms_error(x, t))
-			fp.value += batch_size
-		return np.array(rms_history)
+				for c in self.connections:
+					blw = c.below
+					abv = c.above
+                    
+					if blw.variance > 1:
+						blw.e *= blw.variance
+                    
+					if self.batch_size == 1:
+						g[idx] = c.sigma(abv.v.reshape([abv.n,1])) @ blw.e.reshape([1,blw.n]) - c.M_decay*c.M
+						if noise == True:
+							noise_M = Variable(c.M.data.new(c.M.size()).normal_(1, 0.25))
+							g[idx] *= noise_M
+						idx += 1
 
+						g[idx] = blw.e.reshape([blw.n,1]) @ c.sigma(abv.v.reshape([1,abv.n])) - c.W_decay*c.W
+						if noise == True:
+							noise_W = Variable(c.W.data.new(c.W.size()).normal_(1, 0.25))
+							g[idx] *= noise_W                                  
+						idx += 1
+					else:
+						g[idx] = c.sigma(abv.v).transpose(1,0) @ blw.e - c.M_decay*c.M
+						if noise == True:
+							noise_M = Variable(c.M.data.new(c.M.size()).normal_(1, 0.25))
+							g[idx] *= noise_M
+						idx += 1
 
+						g[idx] = blw.e.transpose(1,0) @ c.sigma(abv.v) - c.W_decay*c.W
+						if noise == True:
+							noise_W = Variable(c.W.data.new(c.W.size()).normal_(1, 0.25))
+							g[idx] *= noise_W      
+						idx += 1
+
+					# Gradient w.r.t. biases
+					g[idx] = torch.sum(blw.e, dim=0)
+					idx += 1
+
+				for i in range (0, len(m), 3):
+					c = self.connections[i // 3]
+                    
+					m[i] = Beta_one*m[i] + (1 - Beta_one)*g[i]
+					v[i] = Beta_two*v[i] + (1 - Beta_two)*(g[i]*g[i])
+					m_hat = m[i] / (1 - (Beta_one**time))
+					v_hat = v[i] / (1 - (Beta_two**time))
+					c.M += alpha*m_hat*(torch.reciprocal(torch.sqrt(v_hat) + ep))
+                    
+                    
+					m[i+1] = Beta_one*m[i+1] + (1 - Beta_one)*g[i+1]
+					v[i+1] = Beta_two*v[i+1] + (1 - Beta_two)*(g[i+1]*g[i+1])
+					m_hat = m[i+1] / (1 - (Beta_one**time))
+					v_hat = v[i+1] / (1 - (Beta_two**time))
+					if not freeze_W:
+						c.W += alpha*m_hat*(torch.reciprocal(torch.sqrt(v_hat) + ep))
+                    
+					m[i+2] = Beta_one*m[i+2] + (1 - Beta_one)*g[i+2]
+					v[i+2] = Beta_two*v[i+2] + (1 - Beta_two)*(g[i+2]*g[i+2]) 
+					m_hat = m[i+2] / (1 - (Beta_one**time))
+					v_hat = v[i+2] / (1 - (Beta_two**time))
+					c.below.b += alpha*m_hat*(torch.reciprocal(torch.sqrt(v_hat) + ep))
+
+				fp.value += 1
+			if test:
+				self.test_error_history.append(self.dataset_error(test[0], test[1], test_length))
+			self.train_error_history.append(self.dataset_error(t, x, train_length))
+        
+		#Restore original decay values
+		for i in range (0, len(self.connections)):
+			self.connections[i].W_decay = OG_W_decay[i]     
+			self.connections[i].M_decay = OG_M_decay[i]
+            
+	def dataset_error(self, dataset_in, dataset_out, dataset_length):
+		self.BackprojectExpectation(dataset_in)
+		z = self.connections[0].sigma(self.layers[1].v)@self.connections[0].M + self.layers[0].b
+		y_classes = np.argmax(z,1)
+		t_classes = np.argmax(dataset_out, 1)
+		correct = np.count_nonzero((y_classes - t_classes)==0)
+		return 1.0 - (correct / dataset_length)
+            
 	def SetBidirectional(self):
 		for l in self.layers:
 			l.SetBidirectional()
