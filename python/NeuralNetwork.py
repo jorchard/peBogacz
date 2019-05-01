@@ -18,6 +18,14 @@ else:
 
 
 
+
+
+
+
+
+
+
+
 #============================================================
 #
 # Connection class
@@ -162,6 +170,19 @@ class Connection(object):
 
 
 
+<<<<<<< Updated upstream
+=======
+
+
+
+
+
+
+
+
+
+
+>>>>>>> Stashed changes
 #============================================================
 #
 # NeuralNetwork class
@@ -322,29 +343,14 @@ class NeuralNetwork(object):
 				l.Allocate(batch_size=proposed_batch_size)
 			#print('Re-Allocating to '+str(proposed_batch_size))
 
-	# def Allocate(self, x):
-	#     dims = len(np.shape(x))
-	#     proposed_batch_size = 1
-	#     if dims==2:
-	#         proposed_batch_size = np.shape(x)[0]
-	#     if proposed_batch_size!=self.batch_size:
-	#         self.batch_size = proposed_batch_size
-	#         del self.t_history
-	#         self.t_history = []
-	#         self.t = 0.
-	#         #print('Allocating')
-	#         for l in self.layers:
-	#             l.Allocate(batch_size=proposed_batch_size)
-	#         #print('Re-Allocating to '+str(proposed_batch_size))
-
 
 	def SetInput(self, x):
-	    #self.Allocate(x)
+	    self.Allocate(x)
 	    self.layers[0].SetInput(x)
 
 
 	def SetExpectation(self, x):
-	    #self.Allocate(x)
+	    self.Allocate(x)
 	    self.layers[-1].SetExpectation(x)
 
 
@@ -352,71 +358,6 @@ class NeuralNetwork(object):
 		self.Allocate(v)
 		self.layers[-1].v = torch.tensor(v).float().to(device)
 
-
-	def Integrate(self):
-		# Loop through connections
-		# Then loop through layers
-
-		# First, address only the connections between layers
-		for c in self.connections:
-		    blw = c.below
-		    abv = c.above
-		    # e <-- v
-		    blw.dedt -= c.sigma(abv.v)@c.M + blw.b
-		    # e --> v
-		    #abv.dvdt += abv.alpha*(blw.e@c.W)*c.sigma_p(abv.v)
-		    abv.dvdt += abv.alpha*(blw.e@c.W)  # *** exclude the derivative of the act fcn ***
-		    # if a.is_top:
-		    #     a.dvdt += a.alpha*(b.e@c.W)*a.sigma_p(a.v)
-		    # else:
-		    #     a.dvdt += (b.e@c.W)*a.sigma_p(a.v)
-
-		    if c.learn==True:
-		        if self.batch_size==1:
-		            c.dMdt += c.sigma(abv.v.reshape([abv.n,1])) @ blw.e.reshape([1,blw.n])
-		            c.dWdt += blw.e.reshape([blw.n,1]) @ c.sigma(abv.v.reshape([1,abv.n]))
-		            #c.dWdt += blw.e.reshape([blw.n,1]) @ abv.e.reshape([1,abv.n])
-		        else:
-		            c.dMdt += c.sigma(abv.v).transpose(1,0) @ blw.e
-		            c.dWdt += blw.e.transpose(1,0) @ c.sigma(abv.v)
-		            #c.dWdt += blw.e.transpose(1,0) @ abv.e
-
-		        blw.dbdt += torch.sum(blw.e, dim=0)
-
-
-		# Next, address the connections inside each layer
-		for l in self.layers:
-		    #l.dedt += l.sigma(l.v) - l.b - l.e
-		    if l.is_input:
-		    	# The state node is not updated in a bottom input layer
-		        #l.dvdt += l.alpha*(l.sensory - l.v) - l.beta*l.e
-		        l.dvdt -= l.beta*l.e + l.v_decay*l.v
-		        #l.dedt += l.sigma(l.v) - l.e
-		        l.dedt += l.v - l.Sigma*l.e
-		    elif l.is_top:
-		        l.dvdt -= l.beta*l.e + l.v_decay*l.v
-		        #l.dedt += l.sigma(l.v) - l.expectation - l.e
-		        l.dedt += l.v - l.expectation - l.Sigma*l.e
-		    else:
-		        l.dvdt -= l.beta*l.e + l.v_decay*l.v
-		        #l.dedt += l.sigma(l.v) - l.e
-		        l.dedt += l.v - l.Sigma*l.e
-
-
-	def Step(self, dt=0.01):
-	    k = dt/self.learning_tau
-	    for l in self.layers:
-	        l.Step(dt=dt)
-
-	    # Only update weights if learning is one, and we are past
-	    # the "blackout" transient period.
-	    if self.learn and self.t-self.t_runstart>=self.learning_blackout:
-	        for c in self.connections: # The first connection is fixed
-	        	if self.learn_weights:
-		            c.M += k*c.dMdt / self.batch_size - k*c.lam*c.M
-		            c.W += k*c.dWdt / self.batch_size - k*c.lam*c.W
-		        if self.learn_biases:
-		            c.below.b += k*c.below.dbdt / self.batch_size
 
 
 	def ShowState(self):
@@ -480,6 +421,14 @@ class NeuralNetwork(object):
 		        layer.Record()
 
 
+	def rms_error(self, x, y):
+		self.BackprojectExpectation(y)
+		mu0 = self.GenerateSamples()
+		rms = torch.sqrt(torch.mean(torch.sum(torch.pow(x-mu0, 2), 1)/np.shape(x)[1]))
+		#print(mu0)
+		return rms
+
+
 	def Run(self, T, dt):
 		self.probe_on = False
 		for l in self.layers:
@@ -496,12 +445,63 @@ class NeuralNetwork(object):
 		    if self.probe_on:
 		    	self.Record()
 
-	def rms_error(self, x, y):
-		self.BackprojectExpectation(y)
-		mu0 = self.GenerateSamples()
-		rms = torch.sqrt(torch.mean(torch.sum(torch.pow(x-mu0, 2), 1)/np.shape(x)[1]))
-		#print(mu0)
-		return rms
+
+	def Integrate(self):
+		# Loop through connections
+		# Then loop through layers
+
+		# First, address only the connections between layers
+		for c in self.connections:
+		    blw = c.below
+		    abv = c.above
+		    # e <-- v
+		    blw.dedt -= c.sigma(abv.v)@c.M + blw.b
+		    # e --> v
+		    #abv.dvdt += abv.alpha*(blw.e@c.W)*c.sigma_p(abv.v)
+		    abv.dvdt += abv.alpha*(blw.e@c.W)  # *** exclude the derivative of the act fcn ***
+
+		    if c.learn==True:
+		        if self.batch_size==1:
+		            c.dMdt += c.sigma(abv.v.reshape([abv.n,1])) @ blw.e.reshape([1,blw.n])
+		            c.dWdt += blw.e.reshape([blw.n,1]) @ c.sigma(abv.v.reshape([1,abv.n]))
+		        else:
+		            c.dMdt += c.sigma(abv.v).transpose(1,0) @ blw.e
+		            c.dWdt += blw.e.transpose(1,0) @ c.sigma(abv.v)
+
+		        blw.dbdt += torch.sum(blw.e, dim=0)
+
+
+		# Next, address the connections inside each layer
+		for l in self.layers:
+		    if l.is_input:
+		    	# The input state only updated when beta>0 (eg. FB mode)
+		    	# Not updated in FF mode, when beta=0
+		        l.dvdt -= l.beta*l.e + l.v_decay*l.beta*l.v
+		        l.dedt += l.v - l.Sigma*l.e
+		    elif l.is_top:
+		        l.dvdt -= l.beta*l.e + l.v_decay*l.alpha*l.v
+		        l.dedt += l.v - l.expectation - l.Sigma*l.e
+		    else:
+		        l.dvdt -= l.beta*l.e + l.v_decay*l.v
+		        l.dedt += l.v - l.Sigma*l.e
+
+
+	def Step(self, dt=0.01):
+	    k = dt/self.learning_tau
+	    for l in self.layers:
+	        l.Step(dt=dt)
+
+	    # Only update weights if learning is one, and we are past
+	    # the "blackout" transient period.
+	    if self.learn and self.t-self.t_runstart>=self.learning_blackout:
+	        for c in self.connections: # The first connection is fixed
+	        	if self.learn_weights:
+		            c.M += k*c.dMdt / self.batch_size - k*c.lam*c.M
+		            c.W += k*c.dWdt / self.batch_size - k/2.*c.lam*c.W
+		        if self.learn_biases:
+		            c.below.b += k*c.below.dbdt / self.batch_size
+
+
 
 	def PEError(self):
 		'''
@@ -534,28 +534,15 @@ class NeuralNetwork(object):
 			for samp in batches:
 				#net.Reset()
 				if batch_size==1 and len(np.shape(samp[0]))==2:
-					self.BackprojectExpectation(samp[1][0])
+					#self.BackprojectExpectation(samp[1][0])
 					#self.PropagateErrors(samp[0][0])
 					self.Infer(T, samp[0][0], samp[1][0], dt=dt, learn=True)
 				else:
-					self.BackprojectExpectation(samp[1])
+					#self.BackprojectExpectation(samp[1])
 					#self.PropagateErrors(samp[0])
 					self.Infer(T, samp[0], samp[1], dt=dt, learn=True)
 				fp.value += batch_size
 			#self.rms_history.append(self.rms_error(x, t))
-
-	# def PropagateErrors(self, x):
-	# 	'''
-	# 		This is only used in Learn (as of Feb 5, 2019)
-	# 	'''
-	# 	# Error nodes
-	# 	self.SetInput(x)
-	# 	mu0 = self.connections[0].sigma(self.layers[1].v)@self.connections[0].M + self.layers[0].b
-	#  	#mu0 = self.layers[1].sigma(self.layers[1].v)@self.connections[0].M + self.layers[0].b
-	# 	self.layers[0].e = self.layers[0].v - mu0
-	# 	for idx in range(1, self.n_layers):
-	# 		self.layers[idx].e = ( self.layers[idx-1].e @ self.connections[idx-1].W ) * self.connections[idx-1].sigma_p(self.layers[idx].v)
-	# 		#self.layers[idx].e = ( self.layers[idx-1].e @ self.connections[idx-1].W ) * self.layers[idx].sigma_p(self.layers[idx].v)
 
 
 	def BackprojectExpectation(self, y):
@@ -611,16 +598,9 @@ class NeuralNetwork(object):
 			if self.layers[idx].is_top==False:
 				self.layers[idx].v -= 0.2*self.layers[idx].v_decay*self.layers[idx].v
 
-			#self.layers[idx].v += 0.2*( (self.layers[idx-1].e @ self.connections[idx-1].W) * self.connections[idx-1].sigma_p(self.layers[idx].v) - self.layers[idx].e )
-	# def OverwriteStates(self):
-	# 	for idx in range(1, self.n_layers-1):
-	# 		# abv.alpha*(blw.e@c.W)*c.sigma_p(abv.v)
-	# 		self.layers[idx].v += 0.2*( (self.layers[idx-1].e @ self.connections[idx-1].W) *
-	# 			self.connections[idx-1].sigma_p(self.layers[idx].v) - self.layers[idx].e )
 
 
-	def FastLearn(self, x, t, test=False, T=20, epochs=5, Beta_one=0.9, Beta_two=0.999, ep=0.00000001, batch_size=10,
-		          noise=False, freeze=10, shuffle=True):
+	def FastLearn(self, x, t, test=False, T=20, epochs=5, Beta_one=0.9, Beta_two=0.999, ep=0.00000001, batch_size=10, noise=False, freeze=10, shuffle=True):
 		'''
 		Implementation of Whittington & Bogacz 2017
 
@@ -829,8 +809,8 @@ class NeuralNetwork(object):
 
 	def Infer(self, T, x, y, dt=0.01, learn=False):
 	    self.learn = learn
-	    self.layers[1].SetBidirectional()
-	    self.layers[-1].SetBidirectional()
+	    #self.layers[1].SetBidirectional()
+	    #self.layers[-1].SetBidirectional()
 	    #self.layers[-1].SetFB()
 	    self.Allocate(x)
 	    self.SetInput(x)
@@ -856,8 +836,8 @@ class NeuralNetwork(object):
 	    self.Allocate(y)
 	    self.SetExpectation(y)
 	    self.Run(T, dt=dt)
-	    mu0 = self.connections[0].sigma(self.layers[1].v) @ self.connections[0].M + self.layers[0].b
-	    return mu0
+	    #mu0 = self.connections[0].sigma(self.layers[1].v) @ self.connections[0].M + self.layers[0].b
+	    return self.layers[0].v
 
 
 #============================================================
