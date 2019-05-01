@@ -15,19 +15,23 @@ params.epochs = 100; %500; % number of epochs
 params.d_rate = 0; % weight decay parameter
 params.beta = 0.2; % euler integration constant
 
-%training data XOR problem
-sin = [0 0 1 1; ...
-       0 1 0 1];
-sout = [1 0 0 1];
-%[sin, sout] = GenerateData(500);
-%sin = [-0.08027386, -0.30823911];
-%sout = [-0.06132582, -0.2608663];
-% sin = sin';
-% sout = sout';
+if 0
+    %training data XOR problem
+    sin = [0 0 1 1; ...
+           0 1 0 1];
+    sout = [1 0 0 1];
+    params.neurons = [2 5 1];
+if 1
+    [sin, sout] = GenerateData(500);
+    %sin = [-0.08027386, -0.30823911];
+    %sout = [-0.06132582, -0.2608663];
+    sin = sin';
+    sout = sout';
+    params.neurons = [2 5 2]; %neurons in each layer
+end
 
-params.neurons = [2 5 1]; %neurons in each layer
 %params.type = {'logsig' 'logsig'}; % 'lin'};
-params.type = {'tanh' 'tanh'}; % 'lin'};
+params.type = {'tanh' 'tanh' 'lin'};
 
 params.n_layers = length(params.neurons); % number of layers
 var = ones(1, params.n_layers); % puts variance on all layers as 1
@@ -39,14 +43,16 @@ params.var=var;
 % plot(sout(1,:), sout(2,:), 'b.');
 % hold off;
 
-[w_pc, b_pc] = my_w_init2(params);
+%[w_pc, b_pc] = my_w_init(params);
+[w_pc, b_pc] = w_init(params);
 %% 
 
 plotevery = 50;
 run_num=1;
 
 for run = 1:run_num;
-    [w_pc, b_pc] = my_w_init2(params); % get weights and biases parameters
+    %[w_pc, b_pc] = my_w_init(params); % get weights and biases parameters
+    %[w_pc, b_pc] = w_init(params); % get weights and biases parameters
     w_ann=w_pc;
     b_ann=b_pc;
     counter =1;
@@ -93,7 +99,7 @@ for its = 1:iterations
     x{params.n_layers}  = x_out;
     [x,e,~] = infer_pc(x,w_pc,b_pc,params);
     y = x{end};
-    plot(y(1), y(2), 'bo');
+    %plot(y(1), y(2), 'bo');
     
    %plot([sout(1,k) xout(1,k)], [sout(2,k), xout(2,k)], 'g'); 
    %plot([sout(1,k) xout(1,k)], [sout(2,k), xout(2,k)], 'g'); 

@@ -339,12 +339,12 @@ class NeuralNetwork(object):
 
 
 	def SetInput(self, x):
-	    self.Allocate(x)
+	    #self.Allocate(x)
 	    self.layers[0].SetInput(x)
 
 
 	def SetExpectation(self, x):
-	    self.Allocate(x)
+	    #self.Allocate(x)
 	    self.layers[-1].SetExpectation(x)
 
 
