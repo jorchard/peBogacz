@@ -170,19 +170,6 @@ class Connection(object):
 
 
 
-<<<<<<< Updated upstream
-=======
-
-
-
-
-
-
-
-
-
-
->>>>>>> Stashed changes
 #============================================================
 #
 # NeuralNetwork class
