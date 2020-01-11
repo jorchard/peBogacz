@@ -15,7 +15,7 @@ import pickle
 # Third-party libraries
 import numpy as np
 
-def load_data():
+def load_data(fname):
     """Return the MNIST data as a tuple containing the training data,
     the validation data, and the test data.
 
@@ -38,13 +38,13 @@ def load_data():
     That's done in the wrapper function ``load_data_wrapper()``, see
     below.
     """
-    f = open('mnist.pkl', 'rb')
+    f = open(fname, 'rb')
     training_data, validation_data, test_data = pickle.load(f, encoding='latin1')
     #training_data, validation_data, test_data = pickle.load(f)
     f.close()
     return (training_data, validation_data, test_data)
 
-def load_data_wrapper():
+def load_data_wrapper(fname):
     """Return a tuple containing ``(training_data, validation_data,
     test_data)``. Based on ``load_data``, but the format is more
     convenient for use in our implementation of neural networks.
@@ -65,7 +65,7 @@ def load_data_wrapper():
     the training data and the validation / test data.  These formats
     turn out to be the most convenient for use in our neural network
     code."""
-    tr_d, va_d, te_d = load_data()
+    tr_d, va_d, te_d = load_data(fname)
     #training_inputs = [np.reshape(x, (784, 1)) for x in tr_d[0]]
     training_inputs = [np.reshape(x, (784, )) for x in tr_d[0]]
     #training_inputs = [2.*np.reshape(x, (784, ))-1. for x in tr_d[0]]
