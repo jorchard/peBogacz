@@ -1087,6 +1087,7 @@ class NeuralNetwork(object):
         return total_pe_error
 
     def dataset_accuracy(self, dataset_in, dataset_out, dataset_length):
+        self.Allocate(dataset_in)
         z = self.BackprojectExpectation(dataset_in.clone().detach())
         
         y_classes = np.argmax(z.cpu(),1)
@@ -1103,6 +1104,7 @@ class NeuralNetwork(object):
         self.learn = False
         
         #Place class vector at layer 0
+        self.Allocate(x)
         self.SetInput(x)
                 
         self.SetBidirectional()
@@ -1153,6 +1155,7 @@ class NeuralNetwork(object):
         self.layers[-1].SetBidirectional()
         
         #Set input images at expectation container
+        self.Allocate(y)
         self.SetExpectation(y.clone().detach())
         
         #Faster than self.Walk
