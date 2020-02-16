@@ -58,7 +58,7 @@ class Connection(object):
                 print(act)
             else:
                 self.activation_function = 'tanh'
-                self.sigma = tanh 
+                self.sigma = tanh
                 self.sigma_p = tanh_p
         else:
             self.below = []
@@ -66,12 +66,12 @@ class Connection(object):
             self.below_idx = -99
             self.above_idx = -99
             self.activation_function = 'tanh'
-            self.sigma = tanh 
+            self.sigma = tanh
             self.sigma_p = tanh_p
 
         self.learn = True
-        
-        
+
+
     def SetM(self, M):
         self.M = torch.tensor(M).float().to(device)
 
@@ -108,7 +108,7 @@ class Connection(object):
     def SetDecay(self, W_decay=0.0, M_decay=0.0):
         self.W_decay = W_decay
         self.M_decay = M_decay
-            
+
     def MakeIdentity(self, noise=0.):
         if self.below.n!=self.above.n:
             print('Connection matrix is not square.')
@@ -147,10 +147,10 @@ class Connection(object):
         W_decay = np.asscalar( np.load(fp) )
         M_decay = np.asscalar( np.load(fp) )
         self.SetDecay(W_decay=W_decay, M_decay=M_decay)
-        
+
         learn = np.asscalar( np.load(fp) )
         self.learn = learn
-        
+
         activation_function = str( np.load(fp) )
         self.SetActivationFunction(activation_function)
 
@@ -164,7 +164,7 @@ class Connection(object):
         '''
         if update_M:
             self.M = self.M + k*self.dMdt/batch_size - k*self.lam*self.M
-        
+
         if update_W:
             self.W = self.W + k*self.dWdt/batch_size - k*self.lam*self.W
 
@@ -175,23 +175,23 @@ class Connection(object):
         self.dMdt.zero_()
         self.dWdt.zero_()
         self.below.dbdt.zero_()
-        
+
     def SetValueNode(self):
         '''
         Sets value node of layer below in the style of direct feed forward.
         '''
-        
+
         self.below.v = self.FeedForward()
 
     def SetErrorNode(self, below_value):
         '''
-        Sets error node of layer below via below.v - feedforward(above.v) 
+        Sets error node of layer below via below.v - feedforward(above.v)
         '''
-        
+
         FF_result = self.FeedForward()
-        
+
         self.below.e = (below_value - FF_result) #/ self.below.variance
-        
+
     @abstractmethod
     def FeedForward(self):
         '''
@@ -266,63 +266,63 @@ class RetinotopicConnection(Connection):
         if isinstance(b, ltypes) or isinstance(a, ltypes):
             self.in_channels = self.above.channels
             self.out_channels = self.below.channels
-            
+
             self.receptive_field = self.below.receptive_field
-                
+
             self.receptive_field_spacing = self.below.receptive_field_spacing
-            
+
             self.shared=False
-            
+
             # Calculate the output shape of the image using the receptive_field_spacing and receptive_field size
             # along with image dimensions
             hp = self.below.height
             wp = self.below.width
-            
+
             # This weight axis will have to transform from in_channels*K[0]*K[1]
             # to out_channels*1*1
             D1 = self.in_channels*self.receptive_field[0]*self.receptive_field[1]
-            
+
             # Parameters required for feedback overlapping receptive field windows' normalization
             self.above_output_size = (self.above.height, self.above.width)
             self.above_receptive_field_area = self.above.receptive_field[0]*self.above.receptive_field[1]
-            self.num_of_sliding_blocks = (self.above_output_size[0] - self.above.receptive_field[0] + 1) * (self.above_output_size[1] - self.above.receptive_field[1] + 1) 
-            
+            self.num_of_sliding_blocks = (self.above_output_size[0] - self.above.receptive_field[0] + 1) * (self.above_output_size[1] - self.above.receptive_field[1] + 1)
+
             self.normalize_feedback=True
-            
+
             ones = torch.ones((1, self.above_receptive_field_area, self.num_of_sliding_blocks))
             self.feedback_normalization = F.fold(ones, self.above_output_size, self.above.receptive_field).float().to(device)
-            
+
             Wgiven = hasattr(W, '__len__')
             Mgiven = hasattr(M, '__len__')
-            
+
             # Weight Matrix M will have 3 axes
-            # [D1, out_channels, out_image_size] 
+            # [D1, out_channels, out_image_size]
             # D1: number of channels in input image * height of receptive_field * width of receptive_field
             # out_channels: number of channels in output image
             # out_image_size: the size of the output image, calculated from receptive_field size and receptive_field_spacing across input image
-            
+
             if Mgiven:
                 self.M = torch.tensor(M).float().to(device)
             else:
                 self.M = torch.randn(D1, self.out_channels, hp*wp, dtype=torch.float32, device=device) / np.sqrt(hp*wp)# / 10
-            
+
             # Weight Matrix W will have 3 axes
-            # [out_channels, D1, out_image_size] 
-            
+            # [out_channels, D1, out_image_size]
+
             if Wgiven:
                 self.W = torch.tensor(W).float().to(device)
             elif symmetric:
                 self.W = deepcopy(self.M.transpose(1,0))
             else:
                 self.W = torch.randn(self.out_channels, D1, hp*wp, dtype=torch.float32, device=device) / np.sqrt(hp*wp)# / 10
-            
+
             # The input is an image of shape BxCxHxW
-            # the output is of shape B x C*K[0]*K[1] x L 
-            # L is number of blocks extracted; in this case L = hp*wp 
-            
+            # the output is of shape B x C*K[0]*K[1] x L
+            # L is number of blocks extracted; in this case L = hp*wp
+
             self.FF_unfold = nn.Unfold(self.receptive_field, stride=self.receptive_field_spacing)
             self.FF_fold = nn.Fold((hp,wp), (1,1), stride=1)
-            
+
             self.FB_unfold = nn.Unfold((1,1), stride=1)
             self.FB_fold = nn.Fold((self.above.height, self.above.width), self.receptive_field, stride=self.receptive_field_spacing)
 
@@ -330,7 +330,7 @@ class RetinotopicConnection(Connection):
             self.dWdt = torch.zeros( self.out_channels, D1, hp*wp, dtype=torch.float32, device=device )
 
             self.M_decay = 0.0
-            self.W_decay = 0.0    
+            self.W_decay = 0.0
 
         else:
             self.W = []
@@ -346,15 +346,15 @@ class RetinotopicConnection(Connection):
         np.save(fp, self.above_idx)
         np.save(fp, self.W.cpu())
         np.save(fp, self.M.cpu())
-        
+
         #NeuralNetwork.Load needs this for Connect
         np.save(fp, self.shared)
-        
+
         np.save(fp, self.W_decay)
         np.save(fp, self.M_decay)
         np.save(fp, self.learn)
         np.save(fp, self.activation_function)
-            
+
     def FeedForward(self):
         '''
         Performs a feedforward operation, above.v @ self.M + below.bias
@@ -362,19 +362,19 @@ class RetinotopicConnection(Connection):
         # Ex. Input image: [10, 3, 32, 32] --> [batch_size, input_channels, height, width]
         v_unfolded = self.FF_unfold(self.sigma(self.above.v))
         # After unfolding with receptive_field=(5,5), receptive_field_spacing=1, input image: [10, 75, 784]
-        
+
         # Image: [10, 75, 784]
         # Weight Matrix: [75, 4, 784]
         # Einsum: multiply the second axis of Image with the first axis of Weight Matrix and
         #         the third axis of Image with the third axis of Weight Matrix, summing the unused axes,
-        #         and output a tensor with dimensions 
+        #         and output a tensor with dimensions
         #         [the first axis of Image, the second axis of Weight Matrix, the third axis of Image/Weight Matrix]
         FF_result = torch.einsum('ijk,jlk->ilk', [v_unfolded, self.M]) + self.below.b
         # Output: [10, 4, 784] --> [batch_size, output_channels, height*width]
 
         # Ex. Input to FF_fold: [10, 4, 784]
         result_folded = self.FF_fold(FF_result)
-        # After folding with receptive_field=(1,1), receptive_field_spacing=1 
+        # After folding with receptive_field=(1,1), receptive_field_spacing=1
         # output image: [10, 4, 28, 28] --> [batch_size, output_channels, height, width]
 
         return result_folded
@@ -386,11 +386,11 @@ class RetinotopicConnection(Connection):
         # Ex. Input image: [10, 4, 28, 28] --> [batch_size, output_channels, height, width]
         e_unfolded = self.FB_unfold(self.below.e)
         # After unfolding with receptive_field=(1,1), receptive_field_spacing=1, input image: [10, 4, 784]
-        
+
         # Image: [10, 4, 784]
         # Weight Matrix: [4, 75, 784]
         # Einsum: multiply the second axis of Image with the first axis of Weight Matrix and
-        #         the third axis of Image with the third axis of Weight Matrix, summing the unused axes, 
+        #         the third axis of Image with the third axis of Weight Matrix, summing the unused axes,
         #         and output a tensor with dimensions:
         #         [the first axis of Image, the second axis of Weight Matrix, the third axis of Image/Weight Matrix]
         FB_result = torch.einsum('ijk,jlk->ilk',[e_unfolded, self.W])
@@ -398,23 +398,23 @@ class RetinotopicConnection(Connection):
 
         # Ex. Input to FB_fold: [10, 75, 784]
         result_folded = self.FB_fold(FB_result) * self.sigma_p(self.above.v)
-        # After folding with receptive_field=(5,5), receptive_field_spacing=1 
+        # After folding with receptive_field=(5,5), receptive_field_spacing=1
         # output image: [10, 3, 32, 32] --> [batch_size, input_channels, height, width]
 
         # Normalize the overlapping windows effect of feedback
         if self.normalize_feedback:
             result_folded = result_folded / self.feedback_normalization
-        
+
         return result_folded
 
     def UpdateIncrementToValue(self, above_error, beta_time=0.2, FB_weight=1.0):
         '''
         Updates dvdt of layer above.
-        
+
         Inputs:
             above_error: self.above.e
         '''
-        
+
         FB_result = self.FeedBack()
 
         self.above.dvdt = beta_time*( self.above.alpha*FB_weight*FB_result - self.above.beta*above_error )
@@ -445,18 +445,18 @@ class RetinotopicConnection(Connection):
         # Ex. above.v: [10, 3, 32, 32] --> [batch_size, input_channels, height, width]
         above_value_nodes = self.FF_unfold(self.sigma(self.above.v))
         # After unfolding with receptive_field=(5,5), receptive_field_spacing=1: [10, 75, 784]
-        
+
         # Ex. below.e: [10, 4, 28, 28] --> [batch_size, output_channels, height, width]
         below_error_nodes = self.FB_unfold(self.below.e)
         # After unfolding with receptive_field=(1,1), receptive_field_spacing=1: [10, 4, 784]
-       
+
         # Ex. Given above.v: [10, 75, 784] and below.e: [10, 4, 784]
         # Einsum: Multiply the first axes and the third axes of above.v and below.e, summing the unused axes, and
         #         output a tensor with dimensions:
         #         [second axis of above.v, second axis of below.e, and third axis of above.v/below.e]
         self.dMdt = torch.einsum('ijk,ilk->jlk',[above_value_nodes, below_error_nodes])
         # Ex. self.dMdt.shape = [75, 4, 784]
-        
+
         if update_feedback:
             # Ex. Given above.v: [10, 75, 784] and below.e: [10, 4, 784]
             # Einsum: Multiply the first axes and the third axes of above.v and below.e, summing the unused axes, and
@@ -464,7 +464,7 @@ class RetinotopicConnection(Connection):
             #         [second axis of below.e, second axis of above.v, and third axis of above.v/below.e]
             self.dWdt = torch.einsum('ijk,ilk->ljk',[above_value_nodes, below_error_nodes])
             # Ex. self.dWdt.shape = [4, 75, 784]
-            
+
 
     def UpdateIncrementToBiases(self):
         '''
@@ -473,12 +473,12 @@ class RetinotopicConnection(Connection):
         # Ex. below.e: [10, 4, 28, 28]
         below_error_nodes = self.FB_unfold(self.below.e)
         # After unfolding with receptive_field=(1,1), receptive_field_spacing=1: [10, 4, 784]
-        
+
         # Sum along axis 0
         self.below.dbdt = torch.sum(below_error_nodes, dim=0)
         # Given below_error_nodes dimensions of [10, 4, 784], summing along axis 0 gives:
         # below.dbdt: [4, 784]
-    
+
 #============================================================
 #
 # RetinotopicSharedWeightsConnection class
@@ -501,36 +501,36 @@ class RetinotopicSharedWeightsConnection(RetinotopicConnection):
           shared is True for convolutions with shared weights
         '''
         super().__init__(b=b, a=a, act=act, W=W, M=M, symmetric=symmetric)
-        
+
         self.shared=True
-        
+
         Wgiven = hasattr(W, '__len__')
         Mgiven = hasattr(M, '__len__')
-        
-        D1 = self.in_channels*self.receptive_field[0]*self.receptive_field[1] 
+
+        D1 = self.in_channels*self.receptive_field[0]*self.receptive_field[1]
         hp = b.height
-        
+
         if Mgiven:
             self.M = torch.tensor(M).float().to(device)
         else:
             self.M = torch.randn(D1, self.out_channels, dtype=torch.float32, device=device) / np.sqrt(hp) / 10
-        
+
         if Wgiven:
             self.W = torch.tensor(W).float().to(device)
         elif symmetric:
             self.W = deepcopy(self.M.transpose(1,0))
         else:
             self.W = torch.randn(self.out_channels, D1, dtype=torch.float32, device=device) / np.sqrt(hp) / 10
-        
+
         self.dMdt = torch.zeros( D1, self.out_channels, dtype=torch.float32, device=device )
         self.dWdt = torch.zeros( self.out_channels, D1, dtype=torch.float32, device=device )
-        
+
     def FeedForward(self):
         '''
         Performs a feedforward operation, above.v @ self.M + below.bias
         '''
         v_unfolded = self.FF_unfold(self.sigma(self.above.v))
-        
+
         FF_result = torch.einsum('ijk,jl->ilk', [v_unfolded, self.M]) + self.below.b
 
         result_folded = self.FF_fold(FF_result)
@@ -542,13 +542,13 @@ class RetinotopicSharedWeightsConnection(RetinotopicConnection):
         Performs a feedback operation, below.e @ self.W
         '''
         e_unfolded = self.FB_unfold(self.below.e)
-        
+
         FB_result = torch.einsum('ijk,jl->ilk',[e_unfolded, self.W])
 
         result_folded = self.FB_fold(FB_result) * self.sigma_p(self.above.v)
 
-        return result_folded    
-    
+        return result_folded
+
     def UpdateIncrementToWeights(self, update_feedback=True):
         '''
         Hebbian update to dMdt and dWdt.
@@ -558,12 +558,12 @@ class RetinotopicSharedWeightsConnection(RetinotopicConnection):
         '''
         above_value_nodes = self.FF_unfold(self.sigma(self.above.v))
         below_error_nodes = self.FB_unfold(self.below.e)
-        
+
         self.dMdt = torch.einsum('ijk,ilk->jl',[above_value_nodes, below_error_nodes])
 
         if update_feedback:
             self.dWdt = torch.einsum('ijk,ilk->lj',[above_value_nodes, below_error_nodes])
-    
+
 #============================================================
 #
 # DenseConnection class
@@ -595,7 +595,7 @@ class DenseConnection(Connection):
                 self.M = torch.tensor(M).float().to(device)
             else:
                 self.M = torch.randn( a.n, b.n, dtype=torch.float32, device=device) / np.sqrt(b.n) / 2.
-                
+
             if Wgiven:
                 self.W = torch.tensor(W).float().to(device)
             elif symmetric:
@@ -625,7 +625,7 @@ class DenseConnection(Connection):
         Performs a feedforward operation, above.v @ self.M + below.b
 
         '''
-        
+
         #Regular feedforward operation between dense layers
         return self.sigma(self.above.v) @ self.M + self.below.b
 
@@ -634,17 +634,17 @@ class DenseConnection(Connection):
         Performs a feedback operation, below.e @ self.W
 
         '''
-        
+
         return self.below.e @ self.W * self.sigma_p(self.above.v)
 
     def UpdateIncrementToValue(self, above_error, beta_time=0.2, FB_weight=1.0):
         '''
         Updates dvdt of layer above.
-        
+
         Inputs:
             above_error: self.above.e
         '''
-        
+
         FB_result = self.FeedBack()
 
         self.above.dvdt = beta_time*( self.above.alpha*FB_weight*FB_result - self.above.beta*above_error )
@@ -670,7 +670,7 @@ class DenseConnection(Connection):
         Hebbian update to dMdt and dWdt.
         '''
         self.dMdt = self.sigma(self.above.v).transpose(1,0) @ self.below.e
-        
+
         if update_feedback:
             self.dWdt = self.below.e.transpose(1,0) @ self.sigma(self.above.v)
 
@@ -682,7 +682,7 @@ class DenseConnection(Connection):
             Updates dWdt if update_feedback is True.
         '''
         self.below.dbdt = torch.sum(self.below.e, dim=0)
-        
+
 #============================================================
 #
 # RetinotopicToDenseConnection class
@@ -704,39 +704,39 @@ class RetinotopicToDenseConnection(DenseConnection):
           symmetric is True if you want W = M^T
         '''
         super().__init__(b=b, a=a, act=act, W=W, M=M, symmetric=symmetric)
-    
+
         self.FF_unfold = nn.Unfold((1,1), stride=1)
         self.FB_fold = nn.Fold((a.height, a.width), (1,1), stride=1)
-        
+
     def FeedForward(self):
         '''
         Performs a feedforward operation, above.v @ self.M + below.b
 
         '''
-        
+
         #Convert receptive field into 1D layer
         RF_unfolded = self.FF_unfold(self.sigma(self.above.v))
         above_value_node = torch.reshape(RF_unfolded, [self.above.batch_size, self.above.n])
 
         return above_value_node @ self.M + self.below.b
-    
+
     def FeedBack(self):
         '''
         Performs a feedback operation, below.e @ self.W
 
         '''
         FB_result = self.below.e @ self.W
-        
+
         FB_result = torch.reshape(FB_result, (self.above.batch_size, self.above.channels, self.above.height*self.above.width))
         FB_result = self.FB_fold(FB_result) * self.sigma_p(self.above.v)
-        
+
         return FB_result
-    
+
     def UpdateIncrementToWeights(self, update_feedback=True):
         '''
         Hebbian update to dMdt and dWdt.
         '''
-        
+
         RF_unfolded = self.FF_unfold(self.sigma(self.above.v))
         above_value_nodes = torch.reshape(RF_unfolded, [self.above.batch_size, self.above.n])
 
@@ -745,26 +745,26 @@ class RetinotopicToDenseConnection(DenseConnection):
         if update_feedback:
             self.dWdt = torch.einsum('ij,ik->kj',[above_value_nodes, self.below.e])
 
-            
+
     '''
     These functions perform their respective operations for the network scheme in which the last retinotopic layer
     has a receptive field the size of the previous layer and high number of channels, with each channel behaving as
     a single neuron for the next, fully connected layer
     '''
-            
+
     def FeedForwardQ(self):
         '''
         Performs a feedforward operation, above.v @ self.M + below.b
 
         '''
-        
+
         #Convert receptive field into 1D layer
-        
+
         # [10, 600, 1, 1] ->  [10, 600]
         retinotopic_layer_flattened = torch.reshape(self.sigma(self.above.v), (self.above.batch_size, self.above.n))
 
         return retinotopic_layer_flattened @ self.M + self.below.b
-    
+
     def FeedBackQ(self):
         '''
         Performs a feedback operation, below.e @ self.W
@@ -773,30 +773,30 @@ class RetinotopicToDenseConnection(DenseConnection):
         FB_result = self.below.e @ self.W
         # [10, 600] -> [10, 600, 1, 1]
         FB_result = torch.reshape(FB_result, [self.above.batch_size, self.above.n, 1, 1])
-        
+
         FB_result = FB_result #* self.sigma_p(self.above.v)
 
         return FB_result
-            
+
     def UpdateIncrementToWeightsQ(self, update_feedback=True):
         '''
         Hebbian update to dMdt and dWdt.
         '''
-        
+
         above_value_nodes = torch.reshape(self.sigma(self.above.v), (self.above.batch_size, self.above.n))
 
         self.dMdt = torch.einsum('ij,ik->jk',[above_value_nodes, self.below.e])
 
         if update_feedback:
             self.dWdt = torch.einsum('ij,ik->kj',[above_value_nodes, self.below.e])
-            
+
 #=============================================================
 #
 # NeuralNetwork class
 #
 #============================================================
 class NeuralNetwork(object):
-    
+
     '''
     Initialization and allocation
     '''
@@ -822,7 +822,7 @@ class NeuralNetwork(object):
         self.update_top_layer_in_overwrite_states = False
         self.rms_history = []
         self.pe_error_history = []
-        self.test_accuracy_history = []        
+        self.test_accuracy_history = []
         self.train_error_history = []
 
     def Allocate(self, x):
@@ -893,12 +893,12 @@ class NeuralNetwork(object):
             ai = np.asscalar( np.load(fp) ) # above_idx
             W = np.load(fp)
             M = np.load(fp)
-            
+
             if (self.layers[bi].is_rf):
                 shared_weights = np.load(fp)
             else:
                 shared_weights = False
-            
+
             self.Connect(bi, ai, W=W, M=M, symmetric=False, shared=shared_weights)
             self.connections[-1].Load(fp)
         self.test_accuracy_history = np.load(fp)
@@ -935,7 +935,7 @@ class NeuralNetwork(object):
             self.connections.append(RetinotopicToDenseConnection(preL, postL, act=act, W=W, M=M, symmetric=symmetric))
         else:
             self.connections.append(DenseConnection(preL, postL, act=act, W=W, M=M, symmetric=symmetric))
-            
+
     def AddLayer(self, L):
         self.layers.append(L)
         self.n_layers += 1
@@ -993,7 +993,7 @@ class NeuralNetwork(object):
     def SetBidirectional(self):
         for l in self.layers:
             l.SetBidirectional()
-            
+
     def SetFF(self):
         for l in self.layers:
             l.SetFF()
@@ -1089,10 +1089,10 @@ class NeuralNetwork(object):
     def dataset_accuracy(self, dataset_in, dataset_out, dataset_length):
         self.Allocate(dataset_in)
         z = self.BackprojectExpectation(dataset_in.clone().detach())
-        
+
         y_classes = np.argmax(z.cpu(),1)
         t_classes = np.argmax(dataset_out.cpu(), 1)
-        
+
         correct = np.count_nonzero((y_classes - t_classes)==0)
         return correct / dataset_length
 
@@ -1102,20 +1102,20 @@ class NeuralNetwork(object):
 
     def Predict(self, T, x, dt=0.01, dampen_v_decay=False, v_decay_dampener=1.0, dampen_every_T=1.0):
         self.learn = False
-        
+
         #Place class vector at layer 0
         self.Allocate(x)
         self.SetInput(x)
-                
+
         self.SetBidirectional()
-        
+
         self.layers[0].SetFF()
         self.layers[-1].SetFF()
-        
+
         self.Run(T, dt=dt, update_M=False, update_W=False, dampen_v_decay=dampen_v_decay, v_decay_dampener=v_decay_dampener, dampen_every_T=dampen_every_T)
-        
+
         return self.layers[-1].v
-    
+
     def FastPredict(self, x, T=100, beta_time=0.2):
         '''
         y = NN.FastPredict(x, T=100)
@@ -1128,93 +1128,94 @@ class NeuralNetwork(object):
         self.layers[0].SetInput(x)
 
         self.SetBidirectional()
-        
+
         self.layers[0].SetFF()
         self.layers[-1].SetFF()
 
         self.update_top_layer_in_overwrite_states = True
         self.SetExpectation(torch.zeros_like( self.layers[-1].e ).float().to(device))
-        
+
         # 3. Run infer_ps
         self.OverwriteErrors()
         for k in range(0, T):
             self.OverwriteStates(beta_time=beta_time)
             self.OverwriteErrors()
-                   
+
         self.update_top_layer_in_overwrite_states = False
-            
+
         g = self.connections[-1].FeedBack()
         return g
 
     def Generate(self, T, y, dt=0.01):
         #No learning allowed
         self.learn = False
-        
+
         #Set Feedback
         self.layers[0].SetFB()
         self.layers[-1].SetBidirectional()
-        
+
         #Set input images at expectation container
         self.Allocate(y)
         self.SetExpectation(y.clone().detach())
-        
+
         #Faster than self.Walk
         self.Run(T, dt=dt, update_M=False, update_W=False)
-        
+
         return self.layers[0].v
 
     def GenerateSamples(self):
         mu0 = self.connections[0].FeedForward()
         return mu0
-    
+
     '''
     Functions that handle the training of the network.
     '''
 
     def Learn(self, x, t, test=None, observe_generative=False, T=2., epochs=5, dt=0.01, batch_size=10, shuffle=True, epoch_to_turn_down_lam=99, turn_down_lam=1.0, turn_down_vdecay=True):
         self.Allocate(batch_size)
-        
+
         self.SetBidirectional()
         self.layers[0].SetFF()
-        
+
         fp = FloatProgress(min=0,max=epochs*len(x))
         display(fp)
-        
+
         if test:
             test_dataset_length = len(test[0])
-    
+
         for k in range(epochs):
             #Turn down weight decay
             if k > epoch_to_turn_down_lam:
                 lam = self.connections[0].lam
                 new_lam = turn_down_lam * lam
-                
+
                 self.SetWeightDecay(new_lam)
-                
+
                 if turn_down_vdecay:
                     vdecay = self.layers[0].v_decay
                     new_vdecay = turn_down_lam * vdecay
-                    
+
                     self.SetvDecay(new_vdecay)
                     print('turning down vdecay')
-            
+
             batches = MakeBatches(x, t, batch_size=batch_size, shuffle=shuffle)
-            
+
             it = 0
-            
+
             for samp in batches:
                 self.Infer(T, samp[0], samp[1], dt=dt, learn=True)
                 fp.value += batch_size
-                
+
     def Infer(self, T, x, y, dt=0.01, learn=False):
         self.learn = learn
-        
+
+        self.Allocate(x)
         self.SetInput(x)
         if (self.layers[-1].is_rf):
             self.SetExpectation(torch.unsqueeze(y.clone().detach(), dim=1))
         else:
             self.SetExpectation(y.clone().detach())
-       
+
         self.Run(T, dt=dt, update_M=True, dampen_v_decay=False, update_W=True)
 
     def Run(self, T, dt, update_M=True, update_W=True, dampen_v_decay=False, v_decay_dampener=1.0, dampen_every_T=1.0):
@@ -1229,10 +1230,10 @@ class NeuralNetwork(object):
         for t in steps:
             if dampen_v_decay and t % dampen_every_T == 0:
                 v_decay = self.layers[0].v_decay
-                
+
                 new_vdecay = v_decay_dampener * v_decay
                 self.SetvDecay(new_vdecay)
-            
+
             self.t = t
             self.ResetGradients()
             self.Integrate()
@@ -1243,15 +1244,15 @@ class NeuralNetwork(object):
     def Integrate(self):
         #Conditionally (beta=1) propagate expectation, or input image, to top layer
         self.layers[-1].PropagateExpectationToError()
-        
+
         #Conditionally (beta=1) propagate classification from error node to value node at input layer
         self.layers[0].FeedForwardFromError()
-        
+
         # First, address only the connections between layers
         for c in self.connections:
             blw = c.below
             abv = c.above
-                    
+
             # e <-- v
             c.UpdateIncrementToError(blw.v)
 
@@ -1271,7 +1272,7 @@ class NeuralNetwork(object):
         # the "blackout" transient period.
         if self.learn and self.t-self.t_runstart >= self.learning_blackout and self.t-self.t_last_weight_update >= self.blackout_interval:
             k = dt/self.learning_tau
-            for c in self.connections: 
+            for c in self.connections:
                 if self.learn_weights:
                     c.UpdateWeights(k, self.batch_size, update_M, update_W)
                 if self.learn_biases:
@@ -1292,25 +1293,25 @@ class NeuralNetwork(object):
             print(self.dataset_accuracy(test[0], test[1], test_length))
             self.Reset()
         train_length = len(x)
-        
+
         fp = FloatProgress(min=0,max=epochs*train_length/batch_size)
         display(fp)
-        
+
         #Initialize Adam parameters
         alpha = self.l_rate
-        
+
         self.Allocate(batch_size)
         self.ResetGradients()
-        
+
         self.SetBidirectional()
         self.layers[0].SetFF()
-        
+
         freeze_W = False
 
         m = [] #1st momentum vector containing each layer's dMdt, dWdt, and dbdt in that order
         v = [] #2nd momentum vector with elements identical to above
         g = [] #vector of all gradients with elements identical to above
-        
+
         for c in self.connections:
             m.append(c.dMdt)
             m.append(c.dWdt)
@@ -1323,17 +1324,17 @@ class NeuralNetwork(object):
             g.append(c.dMdt)
             g.append(c.dWdt)
             g.append(c.below.dbdt)
-            
+
         time=0
 
         for k in range(0, epochs):
             #Remove multiplicative noise after 13 epochs
             if k > 12:
                 noise = False
-            
-            if k > freeze: 
+
+            if k > freeze:
                 freeze_W = True
-            
+
             epoch_pe_error = 0.
             batches = MakeBatches(x, t, batch_size=batch_size, shuffle=shuffle)
 
@@ -1352,76 +1353,76 @@ class NeuralNetwork(object):
                 # 2. Set the desired output
                 # self.SetInput(mb[0])
                 self.layers[0].SetInput(mb[0])
-                
+
                 # 3. Run infer_ps
                 # This involves fixing the input in the bottom and top layers.
                 self.layers[0].SetFF()  # Don't update state of bottom layer
                 self.layers[-1].SetFixed() # Don't update state of top layer
-                
+
                 self.OverwriteErrors()
                 for k in range(0, T):
                     self.OverwriteStates(beta_time=beta_time)
                     self.OverwriteErrors()
 
                 epoch_pe_error += self.PEError()
-                
+
                 # 4. Calculate gradients from the error nodes
                 idx = 0 #keeps track of idx in g
 
                 for c in self.connections:
                     blw = c.below
                     abv = c.above
-                    
+
                     c.UpdateIncrementToWeights(update_feedback=True)
                     c.UpdateIncrementToBiases()
-                
+
                     c.UpdateWeights(alpha, batch_size, update_M=True, update_W=True)
-                    c.UpdateBias(alpha, batch_size) 
-                
+                    c.UpdateBias(alpha, batch_size)
+
                     #TODO: Implement Adam
                     '''
-                    g[idx] = c.dMdt 
+                    g[idx] = c.dMdt
                     idx += 1
-                    g[idx] = c.dWdt 
+                    g[idx] = c.dWdt
                     idx += 1
-                    g[idx] = c.below.dbdt 
+                    g[idx] = c.below.dbdt
                     idx += 1
                     '''
                 '''
                 for i in range (0, len(m), 3):
                     c = self.connections[i // 3]
-                    
+
                     m[i] = Beta_one*m[i] + (1 - Beta_one)*g[i]
                     v[i] = Beta_two*v[i] + (1 - Beta_two)*(g[i]*g[i])
-                    
+
                     m_hat = m[i] / (1 - (Beta_one**time))
                     v_hat = v[i] / (1 - (Beta_two**time))
                     c.M = c.M + alpha * (m_hat*(torch.reciprocal(torch.sqrt(v_hat) + ep)) - c.lam*c.M)
-                    
+
                     m[i+1] = Beta_one*m[i+1] + (1 - Beta_one)*g[i+1]
                     v[i+1] = Beta_two*v[i+1] + (1 - Beta_two)*(g[i+1]*g[i+1])
-                    
+
                     m_hat = m[i+1] / (1 - (Beta_one**time))
                     v_hat = v[i+1] / (1 - (Beta_two**time))
-                    
+
                     c.W = c.W + alpha * (m_hat*(torch.reciprocal(torch.sqrt(v_hat) + ep)) - c.lam*c.W)
-                    
+
                     m[i+2] = Beta_one*m[i+2] + (1 - Beta_one)*g[i+2]
                     v[i+2] = Beta_two*v[i+2] + (1 - Beta_two)*(g[i+2]*g[i+2])
-                    
+
                     m_hat = m[i+2] / (1 - (Beta_one**time))
                     v_hat = v[i+2] / (1 - (Beta_two**time))
                     if self.learn_biases:
                         c.below.b = c.below.b + alpha*m_hat*(torch.reciprocal(torch.sqrt(v_hat) + ep))
-                '''        
-                    
+                '''
+
                 self.ResetGradients()
                 fp.value += 1
-                        
+
                 if test:
-                    print(self.dataset_accuracy(test[0], test[1], test_length))         
+                    print(self.dataset_accuracy(test[0], test[1], test_length))
                     self.Allocate(batch_size)
-                    
+
     def BackprojectExpectation(self, y):
         '''
         Initialize all the state nodes from the top-layer expection.
@@ -1429,13 +1430,13 @@ class NeuralNetwork(object):
         This does not overwrite the state of layer[0].
         '''
         self.layers[-1].v = y.clone().detach()
-        
+
         for idx in range(self.n_layers-2, 0, -1):
             self.connections[idx].SetValueNode()
-        
-        mu0 = self.connections[0].FeedForward() 
-        return mu0        
-        
+
+        mu0 = self.connections[0].FeedForward()
+        return mu0
+
     def OverwriteErrors(self):
         '''
         OverwriteErrors()
@@ -1458,28 +1459,28 @@ class NeuralNetwork(object):
 
         This method potentially updates the state nodes in ALL layers, including the bottom and top.
         '''
-        
+
         self.layers[0].FeedForwardFromError()
         self.layers[0].IncrementValue()
-        
+
         for idx in range(1, self.n_layers-1):
             self.connections[idx-1].UpdateIncrementToValue(self.layers[idx].e, beta_time=beta_time, FB_weight=FB_weight)
             self.layers[idx].IncrementValue()
-            
+
         if self.update_top_layer_in_overwrite_states:
             self.connections[-1].UpdateIncrementToValue(self.layers[-1].e, beta_time=beta_time, FB_weight=FB_weight)
-            self.layers[-1].IncrementValue() 
-    
+            self.layers[-1].IncrementValue()
+
     def UpdateConnectionWeights(self, lrate, batch_size):
         for c in self.connections:
             c.UpdateIncrementToWeights(update_feedback=True)
             c.UpdateIncrementToBiases()
-            
+
             c.UpdateWeights(lrate, batch_size)
             c.UpdateBias(lrate, batch_size)
-            
+
             c.ResetGradients()
-    
+
 
 #============================================================
 #
@@ -1489,15 +1490,15 @@ class NeuralNetwork(object):
 def MakeBatches(data_in, data_out, batch_size=10, shuffle=True):
     '''
         batches = MakeBatches(data_in, data_out, batch_size=10)
-        
+
         Breaks up the dataset into batches of size batch_size.
-        
+
         Inputs:
           data_in    is a list of inputs
           data_out   is a list of outputs
           batch_size is the number of samples in each batch
           shuffle    shuffle samples first (True)
-          
+
         Output:
           batches is a list containing batches, where each batch is:
                      [in_batch, out_batch]
@@ -1563,4 +1564,3 @@ def OneHot(z):
 
 def DrawDigit(x, dim):
     plt.imshow(np.reshape(x.cpu(), (dim,dim)), cmap='gray')
-    
