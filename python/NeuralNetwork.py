@@ -1209,6 +1209,10 @@ class NeuralNetwork(object):
     def Infer(self, T, x, y, dt=0.01, learn=False):
         self.learn = learn
 
+        # Clamp both ends
+        self.layers[0].SetFF()
+        self.layers[-1].SetFB()
+
         self.Allocate(x)
         self.SetInput(x)
         if (self.layers[-1].is_rf):
