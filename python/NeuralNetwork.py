@@ -1005,11 +1005,17 @@ class NeuralNetwork(object):
     def ShowState(self):
         for idx, layer in enumerate(self.layers):
             if layer.is_input:
-                print('Layer '+str(idx)+' (input):')
+                if torch.max(layer.beta)<1.e-10:
+                    print('Layer '+str(idx)+' (input): *CLAMPED*')
+                else:
+                    print('Layer '+str(idx)+' (input):')
                 layer.ShowState()
                 layer.ShowError()
             elif layer.is_top:
-                print('Layer '+str(idx)+' (expectation):')
+                if torch.max(layer.alpha)<1.e-10:
+                    print('Layer '+str(idx)+' (expectation): *CLAMPED*')
+                else:
+                    print('Layer '+str(idx)+' (expectation):')
                 layer.ShowState()
                 layer.ShowError()
             else:
@@ -1151,8 +1157,8 @@ class NeuralNetwork(object):
         self.learn = False
 
         #Set Feedback
-        self.layers[0].SetFB()
-        self.layers[-1].SetBidirectional()
+        self.layers[0].SetBidirectional()
+        self.layers[-1].SetFB()
 
         #Set input images at expectation container
         self.Allocate(y)
