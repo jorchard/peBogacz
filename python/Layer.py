@@ -32,11 +32,11 @@ class PELayer:
 
         # Node activities
         # Allocated dynamically to accommodate different batch sizes
-        self.v = [] 
-        self.e = [] 
-        self.dvdt = [] 
-        self.dedt = [] 
-        
+        self.v = []
+        self.e = []
+        self.dvdt = []
+        self.dedt = []
+
         # Node biases
         if n>0:
             self.b = torch.zeros(self.n, device=device)
@@ -46,7 +46,7 @@ class PELayer:
             self.dbdt = []
 
         # Error node variance for feedback
-        self.variance = 1. 
+        self.variance = 1.
 
         # Misc. parameters
         self.is_input = False
@@ -54,7 +54,7 @@ class PELayer:
         self.is_rf = False
         self.layer_above = []
         self.layer_below = []
-        
+
         self.alpha = torch.ones(self.n, device=device)  # FF weight (-> v from e below)
         self.beta = torch.ones(self.n, device=device)   # FB influence (v<- from corresponding e)
         self.Sigma = 1.
@@ -77,7 +77,7 @@ class PELayer:
         np.save(fp, self.beta.cpu())
         np.save(fp, self.tau.cpu())
         np.save(fp, self.b.cpu())
-        
+
 
     def Load(self, fp):
         self.n = np.asscalar( np.load(fp) )
@@ -97,7 +97,7 @@ class PELayer:
             del self.v, self.e, self.dvdt, self.dedt, self.v_history, self.e_history
             self.v_history = []
             self.e_history = []
-            
+
             self.v = torch.zeros([batch_size, self.n], device=device)
             self.e = torch.zeros([batch_size, self.n], device=device)
             self.dvdt = torch.zeros([batch_size, self.n], device=device)
@@ -112,10 +112,10 @@ class PELayer:
             self.b[k] = b[k]
 
     def ShowState(self):
-        print('  v = '+str(np.array(self.v.cpu())))
+        print(str(self.idx)+':  v = '+str(np.array(self.v.cpu())))
 
     def ShowError(self):
-        print('  e = '+str(np.array(self.e.cpu())))
+        print(str(self.idx)+':  e = '+str(np.array(self.e.cpu())))
 
     def ShowBias(self):
         print('  b = '+str(np.array(self.b.cpu())))
@@ -135,7 +135,7 @@ class PELayer:
     def Clamp(self):
         self.alpha = torch.zeros(self.n).float().to(device)
         self.beta  = torch.zeros(self.n).float().to(device)
-        
+
     def SetFF(self):
         self.alpha = torch.ones(self.n).float().to(device)
         self.beta  = torch.zeros(self.n).float().to(device)
@@ -154,7 +154,7 @@ class PELayer:
 
     def SetVariance(self, variance=1.0):
         self.variance = variance
-        
+
     def Step(self, dt=0.01, set_error=False):
         k = dt/self.tau
         self.v = self.v + k*self.dvdt
@@ -168,7 +168,7 @@ class PELayer:
     def IncrementValue(self):
         self.v = self.v + self.dvdt
         self.dvdt.zero_()
-        
+
     def Probe(self, bool):
         self.probe_on = bool
 
@@ -248,7 +248,7 @@ class TopPELayer(PELayer):
 
     def PropagateExpectationToError(self):
         self.dedt = self.v - self.expectation - self.Sigma*self.e
-        
+
 #***************************************************
 #
 #  RetinotopicLayer
@@ -272,12 +272,12 @@ class RetinotopicPELayer(PELayer):
             self.receptive_field = (receptive_field, receptive_field)
         else:
             self.receptive_field = receptive_field
-                
+
         self.receptive_field_spacing = receptive_field_spacing
 
         # Calculate the output shape of the image using the receptive_field_spacing and receptive_field size
         # along with image dimensions
-        self.height = imsize[0] 
+        self.height = imsize[0]
         self.width = imsize[1]
 
         #Calculate number of neurons in this layer
@@ -293,7 +293,7 @@ class RetinotopicPELayer(PELayer):
 
         self.b = torch.randn(self.channels, imsize[0]*imsize[1], dtype=torch.float32, device=device) / np.sqrt(self.channels*self.height)
         self.dbdt = torch.zeros_like( self.b ).float().to(device)
-        
+
         self.alpha = torch.ones(self.channels, self.height, self.width, dtype=torch.float32, device=device)
         self.beta = torch.ones(self.channels, self.height, self.width, dtype=torch.float32, device=device)
 
@@ -342,7 +342,7 @@ class RetinotopicPELayer(PELayer):
         np.save(fp, self.beta.cpu())
         np.save(fp, self.tau.cpu())
         np.save(fp, self.b.cpu())
-        
+
 
     def Load(self, fp):
         self.channels = np.asscalar( np.load(fp) )
@@ -368,7 +368,7 @@ class RetinotopicPELayer(PELayer):
     def Clamp(self):
         self.alpha = torch.zeros(self.channels, self.height, self.width).float().to(device)
         self.beta  = torch.zeros(self.channels, self.height, self.width).float().to(device)
-        
+
     def SetFF(self):
         self.alpha = torch.ones(self.channels, self.height, self.width).float().to(device)
         self.beta  = torch.zeros(self.channels, self.height, self.width).float().to(device)
