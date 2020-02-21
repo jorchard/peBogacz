@@ -1,3 +1,7 @@
+Everything here is deprecated. Refer to this repository instead:
+
+https://github.com/djcrw/Supervised-Predictive-Coding
+
 The directory contains the following Matlab functions:
 
 example_code.m generates data for an XOR gate. Then trains a predictive coding network, as well as the equivalent MLP on the data.
