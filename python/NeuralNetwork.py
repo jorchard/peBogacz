@@ -1177,7 +1177,7 @@ class NeuralNetwork(object):
     Functions that handle the training of the network.
     '''
 
-    def Learn(self, x, t, test=None, observe_generative=False, T=2., epochs=5, dt=0.01, batch_size=10, shuffle=True, epoch_to_turn_down_lam=99, turn_down_lam=1.0, turn_down_vdecay=True):
+    def Learn(self, x, t, test=None, observe_generative=False, T=2., epochs=5, dt=0.01, batch_size=10, shuffle=True, turn_down_lam=1.0):
         self.Allocate(batch_size)
 
         self.SetBidirectional()
@@ -1190,19 +1190,18 @@ class NeuralNetwork(object):
             test_dataset_length = len(test[0])
 
         for k in range(epochs):
-            #Turn down weight decay
-            if k > epoch_to_turn_down_lam:
+            if turn_down_lam<1.0:
+                #Turn down weight-decay and v-decay
                 lam = self.connections[0].lam
                 new_lam = turn_down_lam * lam
 
                 self.SetWeightDecay(new_lam)
 
-                if turn_down_vdecay:
-                    vdecay = self.layers[0].v_decay
-                    new_vdecay = turn_down_lam * vdecay
+                vdecay = self.layers[0].v_decay
+                new_vdecay = turn_down_lam * vdecay
 
-                    self.SetvDecay(new_vdecay)
-                    print('turning down vdecay')
+                self.SetvDecay(new_vdecay)
+                print('turning down weight-decay and v-decay by a factor of '+str(turn_down_lam))
 
             batches = MakeBatches(x, t, batch_size=batch_size, shuffle=shuffle)
 
