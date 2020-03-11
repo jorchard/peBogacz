@@ -1118,7 +1118,7 @@ class NeuralNetwork(object):
         self.layers[0].SetFF()
         self.layers[-1].SetFF()
 
-        self.Run(T, dt=dt, update_M=False, update_W=False)
+        self.Run(T, dt=dt)
 
         return self.layers[-1].v
 
@@ -1165,7 +1165,7 @@ class NeuralNetwork(object):
         self.SetExpectation(y.clone().detach())
 
         #Faster than self.Walk
-        self.Run(T, dt=dt, update_M=False, update_W=False)
+        self.Run(T, dt=dt)
 
         return self.layers[0].v
 
@@ -1177,7 +1177,7 @@ class NeuralNetwork(object):
     Functions that handle the training of the network.
     '''
 
-    def Learn(self, x, t, test=None, observe_generative=False, T=2., epochs=5, dt=0.01, batch_size=10, shuffle=True, turn_down_lam=1.0):
+    def Learn(self, x, t, test=None, observe_generative=False, T=2., epochs=5, dt=0.01, batch_size=10, shuffle=True, turn_down_lam=1.0, learning_delay=1.0):
         self.Allocate(batch_size)
 
         self.SetBidirectional()
@@ -1208,10 +1208,10 @@ class NeuralNetwork(object):
             it = 0
 
             for samp in batches:
-                self.Infer(T, samp[0], samp[1], dt=dt, learn=True)
+                self.Infer(T, samp[0], samp[1], dt=dt, learn=True, learning_delay=learning_delay)
                 fp.value += batch_size
 
-    def Infer(self, T, x, y, dt=0.01, learn=False):
+    def Infer(self, T, x, y, dt=0.01, learn=False, learning_delay=1.0):
         self.learn = learn
 
         # Clamp both ends
@@ -1225,9 +1225,10 @@ class NeuralNetwork(object):
         else:
             self.SetExpectation(y.clone().detach())
 
-        self.Run(T, dt=dt, update_M=True, update_W=True)
+        self.Run(T, dt=dt, learning_delay=learning_delay)
 
-    def Run(self, T, dt, update_M=True, update_W=True):
+    # update_W, update_M are parameters to Run. No really needed
+    def Run(self, T, dt, learning_delay=1.0):
         self.probe_on = False
         for l in self.layers:
             if l.probe_on:
@@ -1242,6 +1243,8 @@ class NeuralNetwork(object):
             #
             #     new_vdecay = v_decay_dampener * v_decay
             #     self.SetvDecay(new_vdecay)
+
+            update_M = update_W = t >= learning_delay
 
             self.t = t
             self.ResetGradients()
