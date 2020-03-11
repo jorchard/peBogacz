@@ -1106,7 +1106,7 @@ class NeuralNetwork(object):
     Functions that handle the network's predictive and generative (feedforward and feedback) passes.
     '''
 
-    def Predict(self, T, x, dt=0.01, dampen_v_decay=False, v_decay_dampener=1.0, dampen_every_T=1.0):
+    def Predict(self, T, x, dt=0.01):
         self.learn = False
 
         #Place class vector at layer 0
@@ -1118,7 +1118,7 @@ class NeuralNetwork(object):
         self.layers[0].SetFF()
         self.layers[-1].SetFF()
 
-        self.Run(T, dt=dt, update_M=False, update_W=False, dampen_v_decay=dampen_v_decay, v_decay_dampener=v_decay_dampener, dampen_every_T=dampen_every_T)
+        self.Run(T, dt=dt, update_M=False, update_W=False)
 
         return self.layers[-1].v
 
@@ -1225,9 +1225,9 @@ class NeuralNetwork(object):
         else:
             self.SetExpectation(y.clone().detach())
 
-        self.Run(T, dt=dt, update_M=True, dampen_v_decay=False, update_W=True)
+        self.Run(T, dt=dt, update_M=True, update_W=True)
 
-    def Run(self, T, dt, update_M=True, update_W=True, dampen_v_decay=False, v_decay_dampener=1.0, dampen_every_T=1.0):
+    def Run(self, T, dt, update_M=True, update_W=True):
         self.probe_on = False
         for l in self.layers:
             if l.probe_on:
@@ -1237,11 +1237,11 @@ class NeuralNetwork(object):
         steps = torch.arange(self.t, self.t+T, dt)
 
         for t in steps:
-            if dampen_v_decay and t % dampen_every_T == 0:
-                v_decay = self.layers[0].v_decay
-
-                new_vdecay = v_decay_dampener * v_decay
-                self.SetvDecay(new_vdecay)
+            # if dampen_v_decay and t % dampen_every_T == 0:
+            #     v_decay = self.layers[0].v_decay
+            #
+            #     new_vdecay = v_decay_dampener * v_decay
+            #     self.SetvDecay(new_vdecay)
 
             self.t = t
             self.ResetGradients()
