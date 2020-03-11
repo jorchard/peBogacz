@@ -174,8 +174,8 @@ class PELayer:
 
     def Record(self):
         if self.probe_on:
-            self.v_history.append(np.array(self.v.cpu()))
-            self.e_history.append(np.array(self.e.cpu()))
+            self.v_history.append(np.array(self.v.cpu()[0]))
+            self.e_history.append(np.array(self.e.cpu()[0]))
 
 
 #***************************************************
@@ -200,9 +200,9 @@ class InputPELayer(PELayer):
     def SetInput(self, x):
         self.v = x.clone().detach()
 
-    def Record(self):
-        self.v_history.append(np.array(self.v.cpu()))
-        self.e_history.append(np.array(self.e.cpu()))
+    # def Record(self):
+    #     self.v_history.append(np.array(self.v.cpu()))
+    #     self.e_history.append(np.array(self.e.cpu()))
 
     def FeedForwardFromError(self):
         self.dvdt -= self.beta*self.e + self.v_decay*self.beta*self.v
@@ -244,7 +244,7 @@ class TopPELayer(PELayer):
         self.expectation = t.clone().detach()
 
     def Record(self):
-        self.v_history.append(np.array(self.v.cpu()))
+        self.v_history.append(np.array(self.v.cpu()[0]))
 
     def PropagateExpectationToError(self):
         self.dedt = self.v - self.expectation - self.Sigma*self.e
