@@ -243,6 +243,16 @@ class TopPELayer(PELayer):
     def SetExpectation(self, t):
         self.expectation = t.clone().detach()
 
+    def Step(self, dt=0.01, set_error=False):
+        k = dt/self.tau
+        self.v = self.v + k*self.dvdt
+        if set_error:
+            self.e = self.dedt
+        else:
+            self.e = self.e + k*self.dedt
+        self.dvdt.zero_()
+        self.dedt.zero_()
+
     def Record(self):
         self.v_history.append(np.array(self.v.cpu()[0]))
 
