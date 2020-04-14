@@ -620,6 +620,23 @@ class DenseConnection(Connection):
             self.M_decay = -99
             self.lam = -99
 
+    def RandomWeights(self, mult=1., symmetric=True):
+        '''
+         denseconnection.RandomWeights(mult=1., symmetric=True)
+
+         Resets the conenction weights to random values, using the multiplier
+         mult as the magnitude. The larger mult is, the more variation there
+         will be in the weights.
+        '''
+        b = self.below
+        a = self.above
+        self.M = mult * torch.randn( a.n, b.n, dtype=torch.float32, device=device) / np.sqrt(b.n)
+        if symmetric:
+            self.W = deepcopy(self.M.transpose(1,0))
+        else:
+            self.W = mult * torch.randn( b.n, a.n, dtype=torch.float32, device=device) / np.sqrt(b.n)
+
+
     def FeedForward(self):
         '''
         Performs a feedforward operation, above.v @ self.M + below.b
