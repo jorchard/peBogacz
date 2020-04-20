@@ -98,11 +98,11 @@ class PELayer:
             self.v_history = []
             self.e_history = []
 
-            self.v = torch.zeros([batch_size, self.n], device=device)
-            self.e = torch.zeros([batch_size, self.n], device=device)
-            self.dvdt = torch.zeros([batch_size, self.n], device=device)
-            self.dedt = torch.zeros([batch_size, self.n], device=device)
-            self.dbdt = torch.zeros([batch_size, self.n], device=device)
+            self.v = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
+            self.e = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
+            self.dvdt = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
+            self.dedt = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
+            self.dbdt = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
 
     def Release(self):
         del self.v, self.e, self.dvdt, self.dedt, self.b, self.variance
@@ -198,14 +198,14 @@ class InputPELayer(PELayer):
         PELayer.Allocate(self, batch_size=batch_size)
 
     def SetInput(self, x):
-        self.v = x.clone().detach()
+        self.v = x.clone().detach().float()
 
     # def Record(self):
     #     self.v_history.append(np.array(self.v.cpu()))
     #     self.e_history.append(np.array(self.e.cpu()))
 
     def FeedForwardFromError(self):
-        self.dvdt -= self.beta*self.e + self.v_decay*self.beta*self.v
+        self.dvdt -= self.beta * ( self.e + self.v_decay*self.v )
 
 #***************************************************
 #

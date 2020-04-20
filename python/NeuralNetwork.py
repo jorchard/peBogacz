@@ -72,12 +72,6 @@ class Connection(object):
         self.learn = True
 
 
-    def SetM(self, M):
-        self.M = torch.tensor(M).float().to(device)
-
-    def SetW(self, W):
-        self.W = torch.tensor(W).float().to(device)
-
     def SetActivationFunction(self, fcn):
         if fcn=='tanh':
             self.activation_function = 'tanh'
@@ -619,6 +613,13 @@ class DenseConnection(Connection):
             self.W_decay = -99
             self.M_decay = -99
             self.lam = -99
+
+    def SetM(self, M):
+        self.M = torch.tensor(M).float().to(device)
+
+    def SetW(self, W):
+        self.W = torch.tensor(W).float().to(device)
+
 
     def RandomWeights(self, mult=1., symmetric=True):
         '''
@@ -1459,145 +1460,6 @@ class NeuralNetwork(object):
                     print(self.dataset_accuracy(test[0], test[1], test_length))
                     self.Allocate(batch_size)
 
-    # def FastLearn(self, x, t, test=False, T=20, beta_time=0.2, epochs=5, Beta_one=0.9, Beta_two=0.999, ep=0.00000001, batch_size=10, noise=False, freeze=10, shuffle=True):
-    #     '''
-    #     Implementation of Whittington & Bogacz 2017
-    #
-    #     '''
-    #     if test:
-    #         test_length = len(test[0])
-    #         print(self.dataset_accuracy(test[0], test[1], test_length))
-    #         self.Reset()
-    #     train_length = len(x)
-    #
-    #     fp = FloatProgress(min=0,max=epochs*train_length/batch_size)
-    #     display(fp)
-    #
-    #     #Initialize Adam parameters
-    #     alpha = self.l_rate
-    #
-    #     self.Allocate(batch_size)
-    #     self.ResetGradients()
-    #
-    #     self.SetBidirectional()
-    #     self.layers[0].SetFF()
-    #
-    #     freeze_W = False
-    #
-    #     m = [] #1st momentum vector containing each layer's dMdt, dWdt, and dbdt in that order
-    #     v = [] #2nd momentum vector with elements identical to above
-    #     g = [] #vector of all gradients with elements identical to above
-    #
-    #     for c in self.connections:
-    #         m.append(c.dMdt)
-    #         m.append(c.dWdt)
-    #         m.append(c.below.dbdt)
-    #
-    #         v.append(c.dMdt)
-    #         v.append(c.dWdt)
-    #         v.append(c.below.dbdt)
-    #
-    #         g.append(c.dMdt)
-    #         g.append(c.dWdt)
-    #         g.append(c.below.dbdt)
-    #
-    #     time=0
-    #
-    #     for k in range(0, epochs):
-    #         #Remove multiplicative noise after 13 epochs
-    #         if k > 12:
-    #             noise = False
-    #
-    #         if k > freeze:
-    #             freeze_W = True
-    #
-    #         epoch_pe_error = 0.
-    #         batches = MakeBatches(x, t, batch_size=batch_size, shuffle=shuffle)
-    #
-    #         for j in range(0, len(batches)):
-    #             mb = batches[j]
-    #
-    #             #Perform Adam while loop
-    #             time += 1
-    #
-    #             #1. Feedforward Pass
-    #             if (self.layers[-1].is_rf):
-    #                 self.BackprojectExpectation(torch.unsqueeze(mb[1], dim=1))
-    #             else:
-    #                 self.BackprojectExpectation(mb[1])
-    #
-    #             # 2. Set the desired output
-    #             # self.SetInput(mb[0])
-    #             self.layers[0].SetInput(mb[0])
-    #
-    #             # 3. Run infer_ps
-    #             # This involves fixing the input in the bottom and top layers.
-    #             self.layers[0].SetFF()  # Don't update state of bottom layer
-    #             self.layers[-1].SetFixed() # Don't update state of top layer
-    #
-    #             self.OverwriteErrors()
-    #             for k in range(0, T):
-    #                 self.OverwriteStates(beta_time=beta_time)
-    #                 self.OverwriteErrors()
-    #
-    #             epoch_pe_error += self.PEError()
-    #
-    #             # 4. Calculate gradients from the error nodes
-    #             idx = 0 #keeps track of idx in g
-    #
-    #             for c in self.connections:
-    #                 blw = c.below
-    #                 abv = c.above
-    #
-    #                 c.UpdateIncrementToWeights(update_feedback=True)
-    #                 c.UpdateIncrementToBiases()
-    #
-    #                 c.UpdateWeights(alpha, batch_size, update_M=True, update_W=True)
-    #                 c.UpdateBias(alpha, batch_size)
-    #
-    #                 #TODO: Implement Adam
-    #                 '''
-    #                 g[idx] = c.dMdt
-    #                 idx += 1
-    #                 g[idx] = c.dWdt
-    #                 idx += 1
-    #                 g[idx] = c.below.dbdt
-    #                 idx += 1
-    #                 '''
-    #             '''
-    #             for i in range (0, len(m), 3):
-    #                 c = self.connections[i // 3]
-    #
-    #                 m[i] = Beta_one*m[i] + (1 - Beta_one)*g[i]
-    #                 v[i] = Beta_two*v[i] + (1 - Beta_two)*(g[i]*g[i])
-    #
-    #                 m_hat = m[i] / (1 - (Beta_one**time))
-    #                 v_hat = v[i] / (1 - (Beta_two**time))
-    #                 c.M = c.M + alpha * (m_hat*(torch.reciprocal(torch.sqrt(v_hat) + ep)) - c.lam*c.M)
-    #
-    #                 m[i+1] = Beta_one*m[i+1] + (1 - Beta_one)*g[i+1]
-    #                 v[i+1] = Beta_two*v[i+1] + (1 - Beta_two)*(g[i+1]*g[i+1])
-    #
-    #                 m_hat = m[i+1] / (1 - (Beta_one**time))
-    #                 v_hat = v[i+1] / (1 - (Beta_two**time))
-    #
-    #                 c.W = c.W + alpha * (m_hat*(torch.reciprocal(torch.sqrt(v_hat) + ep)) - c.lam*c.W)
-    #
-    #                 m[i+2] = Beta_one*m[i+2] + (1 - Beta_one)*g[i+2]
-    #                 v[i+2] = Beta_two*v[i+2] + (1 - Beta_two)*(g[i+2]*g[i+2])
-    #
-    #                 m_hat = m[i+2] / (1 - (Beta_one**time))
-    #                 v_hat = v[i+2] / (1 - (Beta_two**time))
-    #                 if self.learn_biases:
-    #                     c.below.b = c.below.b + alpha*m_hat*(torch.reciprocal(torch.sqrt(v_hat) + ep))
-    #             '''
-    #
-    #             self.ResetGradients()
-    #             fp.value += 1
-    #
-    #             if test:
-    #                 print(self.dataset_accuracy(test[0], test[1], test_length))
-    #                 self.Allocate(batch_size)
 
     def BackprojectExpectation(self, y):
         '''

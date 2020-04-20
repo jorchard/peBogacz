@@ -390,10 +390,10 @@ class Network():
             np.save(fp, w)
         fp.close()
 
-
-    def Load(self, fname):
+    @classmethod
+    def Load(cls, fname):
         '''
-            net.Load(fname)
+            Network.Load(fname)
 
             Load a Network object from a file. The object needs to be created already,
             but Load will alter it. For example,
@@ -407,20 +407,21 @@ class Network():
         fp = open(fname, 'rb')
         n_layers = np.asscalar( np.load(fp) )
         # self.n_layers is incremented as we call AddLayer
+        net = cls()
         cost_text = str( np.load(fp) )
-        self.SetCostFunction(cost_text)
+        net.SetCostFunction(cost_text)
         # Load layers, one at a time
         for k in range(n_layers):
             l = Layer()
             l.Load(fp)
-            self.AddLayer(l)
+            net.AddLayer(l)
         # Load weight matrices, one at a time
-        self.W = []
+        net.W = []
         for k in range(n_layers-1):
             w = np.array( np.load(fp) )
-            self.W.append(w)
+            net.W.append(w)
         fp.close()
-
+        return net
 
     def AddLayer(self, layer):
         '''
@@ -461,6 +462,8 @@ class Network():
               dEdz is a batch of gradient vectors corresponding to the output nodes
         '''
         if self.cost_text=='categorical-cross-entropy' and self.lyr[-1].act_text=='softmax':
+            return ( self.lyr[-1].h - targets ) / NSamples(targets)
+        elif self.cost_text=='cross-entropy' and self.lyr[-1].act_text=='logistic':
             return ( self.lyr[-1].h - targets ) / NSamples(targets)
         elif self.lyr[-1].act_text=='arctan':
             return self.cost_p(self.lyr[-1].h, targets) * self.lyr[-1].sigma_z_p(self.lyr[-1].z)
