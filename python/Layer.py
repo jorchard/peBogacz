@@ -91,18 +91,26 @@ class PELayer:
         self.b = torch.tensor( np.load(fp) ).float().to(device)
         self.dbdt = torch.zeros_like( self.b ).float().to(device)
 
-    def Allocate(self, batch_size=1):
+    def Allocate(self, batch_size=1, random=0.):
         if batch_size!=self.batch_size or self.batch_size==0:
             self.batch_size = batch_size
             del self.v, self.e, self.dvdt, self.dedt, self.v_history, self.e_history
             self.v_history = []
             self.e_history = []
 
-            self.v = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
-            self.e = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
-            self.dvdt = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
-            self.dedt = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
-            self.dbdt = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
+            if random!=0.:
+                self.v = torch.rand(batch_size, self.n, dtype=torch.float, device=device)*random
+                self.e = torch.rand(batch_size, self.n, dtype=torch.float, device=device)*random
+                self.dvdt = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
+                self.dedt = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
+                self.dbdt = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
+            else:
+                self.v = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
+                self.e = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
+                self.dvdt = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
+                self.dedt = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
+                self.dbdt = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
+
 
     def Release(self):
         del self.v, self.e, self.dvdt, self.dedt, self.b, self.variance
@@ -123,14 +131,20 @@ class PELayer:
     def PEError(self):
         return torch.sum(self.e**2) / self.batch_size / self.n
 
-    def Reset(self):
+    def Reset(self, random=0.):
         del self.v_history, self.e_history
         self.v_history = []
         self.e_history = []
         if isinstance(self.v, (torch.Tensor)):
-            self.v.zero_()
+            if random==0.:
+                self.v.zero_()
+            else:
+                self.v = torch.rand(self.v.shape[0], self.v.shape[1], dtype=torch.float, device=device)*random
         if isinstance(self.e, (torch.Tensor)):
-            self.e.zero_()
+            if random==0.:
+                self.e.zero_()
+            else:
+                self.e = torch.rand(self.e.shape[0], self.e.shape[1], dtype=torch.float, device=device)*random
 
     def Clamp(self):
         self.alpha = torch.zeros(self.n).float().to(device)
@@ -155,13 +169,17 @@ class PELayer:
     def SetVariance(self, variance=1.0):
         self.variance = variance
 
+    def ExchangeCurrent(self):
+        self.dvdt -= self.beta * self.e
+        self.dedt += self.self.v - self.Sigma*self.e
+
     def Step(self, dt=0.01, set_error=False):
         k = dt/self.tau
-        self.v = self.v + k*self.dvdt
+        self.v += k * ( self.dvdt - self.v_decay*self.beta*self.v )
         if set_error:
             self.e = self.dedt
         else:
-            self.e = self.e + k*self.dedt
+            self.e += k*self.dedt
         self.dvdt.zero_()
         self.dedt.zero_()
 
@@ -193,12 +211,20 @@ class InputPELayer(PELayer):
         self.is_top = False
         self.is_rf = False
 
-    def Allocate(self, batch_size=1):
+    def Allocate(self, batch_size=1, random=0.):
         old_batch_size = self.batch_size
-        PELayer.Allocate(self, batch_size=batch_size)
+        PELayer.Allocate(self, batch_size=batch_size, random=random)
 
     def SetInput(self, x):
         self.v = x.clone().detach().float()
+
+    def Step(self, dt=0.1, set_error=False):
+        k = dt/self.tau
+        self.v += k*self.dvdt  # Don't decay v at this layer
+        self.e += k*self.dedt
+        self.dvdt.zero_()
+        self.dedt.zero_()
+
 
     # def Record(self):
     #     self.v_history.append(np.array(self.v.cpu()))
@@ -224,9 +250,9 @@ class TopPELayer(PELayer):
         self.expectation = [] # container for constant input
         self.beta = torch.zeros(self.n, device=device)   # FB influence (v<- from corresponding e)
 
-    def Allocate(self, batch_size=1):
+    def Allocate(self, batch_size=1, random=0.):
         old_batch_size = self.batch_size
-        PELayer.Allocate(self, batch_size=batch_size)
+        PELayer.Allocate(self, batch_size=batch_size, random=random)
         if batch_size!=old_batch_size:
             if old_batch_size!=0:
                 del self.expectation
@@ -235,29 +261,29 @@ class TopPELayer(PELayer):
             else:
                 self.expectation = torch.zeros([batch_size, self.n], dtype=torch.float, device=device)
 
-    def Reset(self):
-        PELayer.Reset(self)
+    def Reset(self, random=0.):
+        PELayer.Reset(self, random=random)
         if isinstance(self.expectation, (torch.Tensor)):
             self.expectation.zero_()
 
     def SetExpectation(self, t):
         self.expectation = t.clone().detach()
 
-    def Step(self, dt=0.01, set_error=False):
-        k = dt/self.tau
-        self.v = self.v + k*self.dvdt
-        if set_error:
-            self.e = self.dedt
-        else:
-            self.e = self.e + k*self.dedt
-        self.dvdt.zero_()
-        self.dedt.zero_()
-
+    # def Step(self, dt=0.01, set_error=False):
+    #     k = dt/self.tau
+    #     self.v = self.v + k*self.dvdt
+    #     if set_error:
+    #         self.e = self.dedt
+    #     else:
+    #         self.e = self.e + k*self.dedt
+    #     self.dvdt.zero_()
+    #     self.dedt.zero_()
+    #
     def Record(self):
         self.v_history.append(np.array(self.v.cpu()[0]))
 
     def PropagateExpectationToError(self):
-        self.dedt = self.v - self.expectation - self.Sigma*self.e
+        self.dedt += self.v - self.expectation - self.Sigma*self.e
 
 #***************************************************
 #

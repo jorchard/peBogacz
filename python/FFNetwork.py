@@ -438,7 +438,7 @@ class Network():
         if self.n_layers>=2:
             m = self.lyr[-1].N
             n = self.lyr[-2].N
-            temp = np.random.normal(size=[n,m])/np.sqrt(n)*4.
+            temp = np.random.normal(size=[n,m])/np.sqrt(n)
             self.W.append(temp)
 
 

@@ -638,6 +638,20 @@ class DenseConnection(Connection):
             self.W = mult * torch.randn( b.n, a.n, dtype=torch.float32, device=device) / np.sqrt(b.n)
 
 
+    def ExchangeCurrent(self):
+        '''
+         c.ExchangeCurrent()
+
+         Send current up and down between two layers, updating the
+         corresponding dvdt and dedt of the adjacent layers.
+        '''
+        # |(v)=(e)| <-- |(v)=(e)|
+        below.dedt += self.sigma(self.above.v) @ self.M + self.below.b
+
+        # |(v)=(e)| --> |(v)=(e)|
+        above.dvdt += self.below.e @ self.W * self.sigma_p(self.above.v)
+
+
     def FeedForward(self):
         '''
         Performs a feedforward operation, above.v @ self.M + below.b
@@ -663,7 +677,7 @@ class DenseConnection(Connection):
             above_error: self.above.e
         '''
 
-        FB_result = self.FeedBack()
+        FB_result = self.FeedBack()  # This is actually FeedFORWARD (?)
 
         self.above.dvdt = beta_time*( self.above.alpha*FB_weight*FB_result - self.above.beta*above_error )
 
@@ -679,7 +693,7 @@ class DenseConnection(Connection):
         Inputs:
             below_value: self.below.v
         '''
-        FF_result = self.FeedForward()
+        FF_result = self.FeedForward()  # This is actually FeedBACK (?)
 
         self.below.dedt = (below_value - FF_result - self.below.Sigma*self.below.e)
 
@@ -843,15 +857,16 @@ class NeuralNetwork(object):
         self.test_accuracy_history = []
         self.train_error_history = []
 
-    def Allocate(self, x):
+    def Allocate(self, x, random=0.):
         '''
-        Allocate(x)
+        Allocate(x, random=0.)
 
         Creates zero-vectors for the state and error nodes of all layers.
 
         Input:
           x can either be the number of samples in a batch, or it can be
             a batch.
+          random is the multiplier for random node values
         '''
         proposed_batch_size = 1
         if type(x) in (int, float, ):
@@ -867,7 +882,7 @@ class NeuralNetwork(object):
             self.t_history = []
             self.t = 0.
             for idx,l in enumerate(self.layers):
-                l.Allocate(batch_size=proposed_batch_size)
+                l.Allocate(batch_size=proposed_batch_size, random=random)
 
     '''
     Saving and Loading
@@ -1056,12 +1071,12 @@ class NeuralNetwork(object):
     Utility functions for resetting the network
     '''
 
-    def Reset(self):
+    def Reset(self, random=0.):
         del self.t_history
         self.t_history = []
         self.t = 0.
         for l in self.layers:
-            l.Reset()
+            l.Reset(random=random)
 
     def ResetErrors(self):
         for l in self.layers:
@@ -1124,11 +1139,11 @@ class NeuralNetwork(object):
     Functions that handle the network's predictive and generative (feedforward and feedback) passes.
     '''
 
-    def Predict(self, T, x, dt=0.01):
+    def Predict(self, T, x, dt=0.01, random=0.):
         self.learn = False
 
         #Place class vector at layer 0
-        self.Allocate(x)
+        self.Allocate(x, random=random)
         self.SetInput(x)
 
         self.SetBidirectional()
@@ -1283,20 +1298,24 @@ class NeuralNetwork(object):
             blw = c.below
             abv = c.above
 
+            #c.ExchangeCurrent()
+
             # e <-- v
             c.UpdateIncrementToError(blw.v)
-
             # e --> v
-            c.UpdateIncrementToValue(abv.e)
+            c.UpdateIncrementToValue(abv.e, beta_time=1.)
 
             # Hebbian synaptic weight increments
             if c.learn==True:
                 c.UpdateIncrementToWeights(update_feedback=True)
                 c.UpdateIncrementToBiases()
 
+        # for l in self.layers:
+        #     l.ExchangeCurrent()
+
     def Step(self, dt=0.01, update_M=True, update_W=True):
         for l in self.layers:
-            l.Step(dt=dt, set_error=False)
+            l.Step(dt=dt)
 
         # Only update weights if learning is one, and we are past
         # the "blackout" transient period.
