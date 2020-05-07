@@ -139,12 +139,12 @@ class PELayer:
             if random==0.:
                 self.v.zero_()
             else:
-                self.v = torch.rand(self.v.shape[0], self.v.shape[1], dtype=torch.float, device=device)*random
+                self.v = torch.randn(self.v.shape[0], self.v.shape[1], dtype=torch.float, device=device)*random
         if isinstance(self.e, (torch.Tensor)):
             if random==0.:
                 self.e.zero_()
             else:
-                self.e = torch.rand(self.e.shape[0], self.e.shape[1], dtype=torch.float, device=device)*random
+                self.e = torch.randn(self.e.shape[0], self.e.shape[1], dtype=torch.float, device=device)*random
 
     def Clamp(self):
         self.alpha = torch.zeros(self.n).float().to(device)

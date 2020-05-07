@@ -1244,6 +1244,7 @@ class NeuralNetwork(object):
                 self.Infer(T, samp[0], samp[1], dt=dt, learn=True, learning_delay=learning_delay)
                 fp.value += batch_size
 
+
     def Infer(self, T, x, y, dt=0.01, learn=False, learning_delay=1.0):
         self.learn = learn
 
@@ -1406,11 +1407,13 @@ class NeuralNetwork(object):
                 self.layers[0].SetInput(mb[0])
 
                 # 3. Run infer_ps
-                # This involves fixing the input in the bottom and top layers.
+                # This involves fixing the input in the bottom and top layers...
                 self.layers[0].SetFF()  # Don't update state of bottom layer
                 self.layers[-1].SetFB() # Don't update state of top layer
 
                 self.OverwriteErrors()
+
+                # ... and iterating for T steps.
                 for q in range(0, T):
                     self.OverwriteStates(beta_time=beta_time)
                     self.OverwriteErrors()
